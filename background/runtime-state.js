@@ -47,6 +47,8 @@
         'plusCheckoutCountry',
         'plusCheckoutCurrency',
         'plusCheckoutSource',
+        'hostedCheckoutPayPalLimitedAt',
+        'hostedCheckoutPayPalLimitedUrl',
         'plusBillingCountryText',
         'plusBillingAddress',
         'plusPaypalApprovedAt',

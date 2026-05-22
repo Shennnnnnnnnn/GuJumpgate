@@ -17,6 +17,7 @@
       getTabId,
       isTabAlive,
       registerTab,
+      setState = async () => {},
       sleepWithStop = async () => {},
       throwIfStopped = () => {},
       waitForTabCompleteUntilStopped = async () => {},
@@ -285,7 +286,77 @@
       return normalizeString(sessionState?.session?.account?.planType).toLowerCase();
     }
 
-    async function waitForPlusChatGptSession(tabId, visibleStep, stepKey = 'cockpit-tools-session-ready') {
+    function isPayPalCookie(cookie = {}) {
+      const domain = normalizeString(cookie?.domain).toLowerCase();
+      return domain === 'paypal.com'
+        || domain === '.paypal.com'
+        || domain.endsWith('.paypal.com');
+    }
+
+    function buildCookieRemovalUrl(cookie = {}) {
+      const domain = normalizeString(cookie?.domain).replace(/^\./, '');
+      const path = normalizeString(cookie?.path) || '/';
+      const protocol = cookie?.secure ? 'https:' : 'http:';
+      return `${protocol}//${domain}${path.startsWith('/') ? path : `/${path}`}`;
+    }
+
+    async function collectPayPalCookies() {
+      if (!chrome?.cookies?.getAll) {
+        return [];
+      }
+      const stores = chrome.cookies.getAllCookieStores
+        ? await chrome.cookies.getAllCookieStores()
+        : [];
+      const cookies = [];
+      const seen = new Set();
+      const storeIds = stores.length ? stores.map((store) => store.id).filter(Boolean) : [null];
+      for (const storeId of storeIds) {
+        const batch = await chrome.cookies.getAll(storeId ? { storeId } : {});
+        for (const cookie of batch || []) {
+          if (!isPayPalCookie(cookie)) {
+            continue;
+          }
+          const key = [storeId || '', cookie.domain || '', cookie.path || '', cookie.name || ''].join('\n');
+          if (seen.has(key)) {
+            continue;
+          }
+          seen.add(key);
+          cookies.push({ ...cookie, storeId: storeId || cookie.storeId });
+        }
+      }
+      return cookies;
+    }
+
+    async function clearPayPalCookiesForLimitedCheckout(visibleStep, stepKey) {
+      if (!chrome?.cookies?.getAll || !chrome.cookies?.remove) {
+        await addStepLog(visibleStep, 'PayPal 账号受限后仍为 free，但当前浏览器不支持 cookies API，无法清理 PayPal cookies。', 'warn', stepKey);
+        return 0;
+      }
+      const cookies = await collectPayPalCookies();
+      let removedCount = 0;
+      for (const cookie of cookies) {
+        try {
+          const result = await chrome.cookies.remove({
+            url: buildCookieRemovalUrl(cookie),
+            name: cookie.name,
+            ...(cookie.storeId ? { storeId: cookie.storeId } : {}),
+          });
+          if (result) {
+            removedCount += 1;
+          }
+        } catch (error) {
+          console.warn('[MultiPage:cockpit-tools-session-import] remove PayPal cookie failed', {
+            name: cookie?.name,
+            domain: cookie?.domain,
+            error: error?.message || error,
+          });
+        }
+      }
+      await addStepLog(visibleStep, `PayPal 账号受限后 Session 仍为 free，已清理 ${removedCount} 个 PayPal cookies，准备回到步骤 6 重新创建 Checkout。`, 'warn', stepKey);
+      return removedCount;
+    }
+
+    async function waitForPlusChatGptSession(tabId, visibleStep, stepKey = 'cockpit-tools-session-ready', state = {}) {
       let attempt = 0;
       while (true) {
         throwIfStopped();
@@ -297,6 +368,15 @@
             await addStepLog(visibleStep, 'Session JSON 已确认 planType=plus。', 'success', stepKey);
           }
           return sessionState;
+        }
+
+        if (planType === 'free' && Number(state?.hostedCheckoutPayPalLimitedAt) > 0) {
+          await clearPayPalCookiesForLimitedCheckout(visibleStep, stepKey);
+          await setState({
+            hostedCheckoutPayPalLimitedAt: null,
+            hostedCheckoutPayPalLimitedUrl: '',
+          });
+          throw new Error('PAYPAL_LIMITED_RESTART_FROM_STEP6::PayPal Hermes 显示账号受限，ChatGPT Session 仍为 free，已清理 PayPal cookies，请从步骤 6 重新创建 Plus Checkout。');
         }
 
         const planLabel = planType || '未知';
@@ -382,7 +462,7 @@
 
       const tabId = await getOrOpenSessionJsonTab(state, visibleStep);
       await addStepLog(visibleStep, '已打开 Session JSON 页面，正在刷新直到 account.planType=plus...', 'info', 'cockpit-tools-session-ready');
-      cachedPlusSessionState = await waitForPlusChatGptSession(tabId, visibleStep, 'cockpit-tools-session-ready');
+      cachedPlusSessionState = await waitForPlusChatGptSession(tabId, visibleStep, 'cockpit-tools-session-ready', state);
 
       await completeNodeFromBackground(
         state?.nodeId || 'cockpit-tools-session-ready',
@@ -398,7 +478,7 @@
       if (!isCachedPlusSessionState(sessionState)) {
         await addStepLog(visibleStep, '未找到上一步缓存的 Plus Session，正在重新打开 Session JSON 页面读取...', 'info');
         const tabId = await getOrOpenSessionJsonTab(state, visibleStep);
-        sessionState = await waitForPlusChatGptSession(tabId, visibleStep, 'cockpit-tools-session-import');
+        sessionState = await waitForPlusChatGptSession(tabId, visibleStep, 'cockpit-tools-session-import', state);
         cachedPlusSessionState = sessionState;
       }
 

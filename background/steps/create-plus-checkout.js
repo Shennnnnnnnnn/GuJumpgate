@@ -23,6 +23,8 @@
   const HOSTED_CHECKOUT_PAYPAL_LOOP_TIMEOUT_MS = 10 * 60 * 1000;
   const HOSTED_CHECKOUT_VERIFICATION_POLL_ATTEMPTS = 12;
   const HOSTED_CHECKOUT_VERIFICATION_POLL_INTERVAL_MS = 5000;
+  const HOSTED_CHECKOUT_PAYPAL_VERIFICATION_RESEND_MAX_ATTEMPTS = 3;
+  const HOSTED_CHECKOUT_PAYPAL_VERIFICATION_RESEND_COOLDOWN_MS = 15000;
   const HOSTED_CHECKOUT_VERIFICATION_POPUP_DELAY_MIN_SECONDS = 0;
   const HOSTED_CHECKOUT_VERIFICATION_POPUP_DELAY_MAX_SECONDS = 60;
   const HOSTED_CHECKOUT_VERIFICATION_POPUP_DELAY_DEFAULT_SECONDS = 20;
@@ -1434,6 +1436,8 @@ function FindProxyForURL(url, host) {
 
     async function runHostedCheckoutPayPalFlow(tabId, guestProfile) {
       const startedAt = Date.now();
+      let verificationResendCount = 0;
+      let lastVerificationResendAt = 0;
       while (Date.now() - startedAt < HOSTED_CHECKOUT_PAYPAL_LOOP_TIMEOUT_MS) {
         throwIfStopped();
         const tab = await chrome?.tabs?.get?.(tabId).catch(() => null);
@@ -1465,6 +1469,44 @@ function FindProxyForURL(url, host) {
         }
 
         const pageState = await getHostedCheckoutPayPalState(tabId);
+        if (pageState.payPalAccountLimitedVisible) {
+          await addLog(
+            `步骤 6：PayPal Hermes 返回账号受限提示，先进入下一步等待 ChatGPT Plus Session。提示：${pageState.payPalAccountLimitedText || 'Your account is limited.'}`,
+            'warn'
+          );
+          return {
+            limitedAccount: true,
+            url: currentUrl,
+          };
+        }
+        if (
+          pageState.hostedStage === 'verification'
+          && pageState.verificationErrorVisible
+          && pageState.verificationResendVisible
+        ) {
+          const elapsedSinceResend = Date.now() - lastVerificationResendAt;
+          if (
+            verificationResendCount < HOSTED_CHECKOUT_PAYPAL_VERIFICATION_RESEND_MAX_ATTEMPTS
+            && elapsedSinceResend >= HOSTED_CHECKOUT_PAYPAL_VERIFICATION_RESEND_COOLDOWN_MS
+          ) {
+            verificationResendCount += 1;
+            lastVerificationResendAt = Date.now();
+            await addLog(
+              `步骤 6：PayPal hosted checkout 验证码返回错误提示，正在点击 Resend 重新发送验证码（${verificationResendCount}/${HOSTED_CHECKOUT_PAYPAL_VERIFICATION_RESEND_MAX_ATTEMPTS}）。`,
+              'warn'
+            );
+            await runHostedCheckoutPayPalStep(tabId, {
+              ...guestProfile,
+              resendVerification: true,
+            });
+            await sleepWithStop(1000);
+            continue;
+          }
+          if (elapsedSinceResend < HOSTED_CHECKOUT_PAYPAL_VERIFICATION_RESEND_COOLDOWN_MS) {
+            await sleepWithStop(1000);
+            continue;
+          }
+        }
         if (pageState.hostedStage === 'verification' && pageState.verificationInputsVisible) {
           await addLog('步骤 6：检测到 PayPal hosted checkout 验证码弹窗，正在获取并填写验证码...', 'info');
           await waitForHostedCheckoutVerificationPopupDelay();
@@ -1547,13 +1589,32 @@ function FindProxyForURL(url, host) {
       }
       if (isPaymentsSuccessUrl(transitionUrl)) {
         await addLog('步骤 6：hosted checkout 在提交后已直接进入 ChatGPT 支付成功页。', 'ok');
+        await setState({
+          hostedCheckoutPayPalLimitedAt: null,
+          hostedCheckoutPayPalLimitedUrl: '',
+        });
         await completeNodeFromBackground('plus-checkout-create', completionPayload);
         return;
       }
 
       await addLog('步骤 6：hosted checkout 已跳转到 PayPal，准备继续 guest/card 流自动化。', 'info');
-      await runHostedCheckoutPayPalFlow(tabId, guestProfile);
+      const paypalResult = await runHostedCheckoutPayPalFlow(tabId, guestProfile);
+      if (paypalResult?.limitedAccount) {
+        await setState({
+          hostedCheckoutPayPalLimitedAt: Date.now(),
+          hostedCheckoutPayPalLimitedUrl: paypalResult.url || transitionUrl,
+        });
+        await completeNodeFromBackground('plus-checkout-create', {
+          ...completionPayload,
+          hostedCheckoutPayPalLimited: true,
+        });
+        return;
+      }
       await addLog('步骤 6：hosted checkout 支付链路已完成，准备进入下一步。', 'ok');
+      await setState({
+        hostedCheckoutPayPalLimitedAt: null,
+        hostedCheckoutPayPalLimitedUrl: '',
+      });
       await completeNodeFromBackground('plus-checkout-create', completionPayload);
     }
 

@@ -268,6 +268,42 @@ function hasHostedVerificationInputs() {
   return findHostedVerificationInputs().length >= 6;
 }
 
+function findHostedVerificationErrorAlert() {
+  const alerts = Array.from(document.querySelectorAll('[role="alert"]')).filter(isVisibleElement);
+  return alerts.find((alert) => {
+    const text = normalizeText(alert?.textContent || '');
+    return /something went wrong|get a new code|new code|verification code|验证码|代码/i.test(text);
+  }) || null;
+}
+
+function findHostedVerificationResendButton() {
+  const direct = document.querySelector('button[data-testid="resend-link"]')
+    || document.querySelector('a[data-testid="resend-link"]')
+    || document.querySelector('[data-testid="resend-link"]');
+  if (direct && isVisibleElement(direct) && isEnabledControl(direct)) {
+    return direct;
+  }
+  return findClickableByText([
+    /resend|get a new code|send again|new code/i,
+    /重发|重新发送|获取新验证码|新验证码/i,
+  ]);
+}
+
+function hasHostedVerificationErrorAlert() {
+  return Boolean(findHostedVerificationErrorAlert());
+}
+
+function findPayPalAccountLimitedMessage() {
+  const candidates = [
+    ...Array.from(document.querySelectorAll('p.message, .message')),
+    document.body,
+  ].filter(Boolean);
+  return candidates.find((node) => {
+    const text = normalizeText(node?.textContent || node?.innerText || '');
+    return /your account is limited|account is limited|paypal account overview/i.test(text);
+  }) || null;
+}
+
 function findHostedReviewConsentButton() {
   const direct = document.getElementById('consentButton')
     || document.querySelector('button[data-testid="consentButton"]');
@@ -284,7 +320,7 @@ function detectPayPalHostedCheckoutStage() {
   if (!/paypal\./i.test(String(location?.host || ''))) {
     return PAYPAL_HOSTED_STAGE_OUTSIDE;
   }
-  if (hasHostedVerificationInputs()) {
+  if (hasHostedVerificationInputs() || findHostedVerificationResendButton()) {
     return PAYPAL_HOSTED_STAGE_VERIFICATION;
   }
   if (isPayPalHostedGuestCheckoutPage()) {
@@ -568,6 +604,26 @@ async function fillHostedVerificationCode(payload = {}) {
   };
 }
 
+async function clickHostedVerificationResend(payload = {}) {
+  const delayOperation = typeof performPayPalOperationWithDelay === 'function'
+    ? performPayPalOperationWithDelay
+    : async (_metadata, operation) => operation();
+  await waitForDocumentComplete();
+  const button = findHostedVerificationResendButton();
+  if (!button) {
+    throw new Error('PayPal hosted checkout 未找到验证码 Resend 按钮。');
+  }
+  await delayOperation({ stepKey: 'plus-checkout-create', kind: 'click', label: 'paypal-hosted-verification-resend' }, async () => {
+    dispatchHostedGenericClick(button);
+  });
+  await sleep(Math.max(0, Math.floor(Number(payload.afterClickDelayMs) || 1000)));
+  return {
+    stage: PAYPAL_HOSTED_STAGE_VERIFICATION,
+    resendClicked: true,
+    verificationErrorVisible: hasHostedVerificationErrorAlert(),
+  };
+}
+
 async function fillHostedGuestCheckout(payload = {}) {
   await waitForDocumentComplete();
   startHostedCaptchaCleanupObserver();
@@ -679,10 +735,15 @@ async function runHostedCheckoutStep(payload = {}) {
   }
   const stage = detectPayPalHostedCheckoutStage();
   if (stage === PAYPAL_HOSTED_STAGE_VERIFICATION) {
+    if (payload.resendVerification) {
+      return clickHostedVerificationResend(payload);
+    }
     if (!payload.verificationCode && !payload.code) {
       return {
         stage,
         requiresVerificationCode: true,
+        verificationErrorVisible: hasHostedVerificationErrorAlert(),
+        verificationResendVisible: Boolean(findHostedVerificationResendButton()),
       };
     }
     return fillHostedVerificationCode(payload);
@@ -935,6 +996,9 @@ function inspectPayPalState() {
   const approveButton = findApproveButton();
   const loginPhase = getPayPalLoginPhase(emailInput, passwordInput);
   const hostedStage = detectPayPalHostedCheckoutStage();
+  const verificationErrorAlert = findHostedVerificationErrorAlert();
+  const verificationResendButton = findHostedVerificationResendButton();
+  const accountLimitedMessage = findPayPalAccountLimitedMessage();
   return {
     url: location.href,
     readyState: document.readyState,
@@ -945,6 +1009,13 @@ function inspectPayPalState() {
     hasPasswordInput: Boolean(passwordInput),
     hasHostedGuestCheckout: hostedStage === PAYPAL_HOSTED_STAGE_GUEST_CHECKOUT,
     verificationInputsVisible: hasHostedVerificationInputs(),
+    verificationErrorVisible: Boolean(verificationErrorAlert),
+    verificationErrorText: verificationErrorAlert ? normalizeText(verificationErrorAlert.textContent || '') : '',
+    verificationResendVisible: Boolean(verificationResendButton),
+    payPalAccountLimitedVisible: Boolean(accountLimitedMessage),
+    payPalAccountLimitedText: accountLimitedMessage
+      ? normalizeText(accountLimitedMessage.textContent || accountLimitedMessage.innerText || '')
+      : '',
     reviewConsentReady: Boolean(findHostedReviewConsentButton()),
     approveReady: Boolean(approveButton && isEnabledControl(approveButton)),
     approveButtonText: approveButton ? getActionText(approveButton) : '',
