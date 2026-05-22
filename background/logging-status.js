@@ -26,6 +26,7 @@
         'vps-panel': 'CPA 面板',
         'sub2api-panel': 'SUB2API 后台',
         'codex2api-panel': 'Codex2API 后台',
+        'cockpit-tools-panel': 'cockpit-tools',
         'qq-mail': 'QQ 邮箱',
         'mail-163': '163 邮箱',
         'mail-2925': '2925 邮箱',

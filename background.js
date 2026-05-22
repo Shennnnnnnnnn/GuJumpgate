@@ -53,6 +53,7 @@ importScripts(
   'background/steps/plus-return-confirm.js',
   'background/steps/sub2api-session-import.js',
   'background/steps/cpa-session-import.js',
+  'background/steps/cockpit-tools-session-import.js',
   'background/steps/oauth-login.js',
   'background/steps/fetch-login-code.js',
   'background/steps/confirm-oauth.js',
@@ -73,6 +74,7 @@ const DEFAULT_ACTIVE_FLOW_ID = 'openai';
 const PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH = 'oauth';
 const PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION = 'sub2api_codex_session';
 const PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION = 'cpa_codex_session';
+const PLUS_ACCOUNT_ACCESS_STRATEGY_COCKPIT_TOOLS_SESSION = 'cockpit_tools_session';
 const NORMAL_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.getSteps?.({
   activeFlowId: DEFAULT_ACTIVE_FLOW_ID,
   plusModeEnabled: false,
@@ -105,6 +107,12 @@ const PLUS_PAYPAL_CPA_SESSION_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.
   plusPaymentMethod: 'paypal',
   plusAccountAccessStrategy: PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION,
 }) || PLUS_PAYPAL_STEP_DEFINITIONS;
+const PLUS_PAYPAL_COCKPIT_TOOLS_SESSION_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.getSteps?.({
+  activeFlowId: DEFAULT_ACTIVE_FLOW_ID,
+  plusModeEnabled: true,
+  plusPaymentMethod: 'paypal',
+  plusAccountAccessStrategy: PLUS_ACCOUNT_ACCESS_STRATEGY_COCKPIT_TOOLS_SESSION,
+}) || PLUS_PAYPAL_STEP_DEFINITIONS;
 const PLUS_PAYPAL_PHONE_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.getSteps?.({
   activeFlowId: DEFAULT_ACTIVE_FLOW_ID,
   plusModeEnabled: true,
@@ -134,6 +142,12 @@ const PLUS_GOPAY_CPA_SESSION_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.g
   plusModeEnabled: true,
   plusPaymentMethod: 'gopay',
   plusAccountAccessStrategy: PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION,
+}) || PLUS_GOPAY_STEP_DEFINITIONS;
+const PLUS_GOPAY_COCKPIT_TOOLS_SESSION_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.getSteps?.({
+  activeFlowId: DEFAULT_ACTIVE_FLOW_ID,
+  plusModeEnabled: true,
+  plusPaymentMethod: 'gopay',
+  plusAccountAccessStrategy: PLUS_ACCOUNT_ACCESS_STRATEGY_COCKPIT_TOOLS_SESSION,
 }) || PLUS_GOPAY_STEP_DEFINITIONS;
 const PLUS_GOPAY_PHONE_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.getSteps?.({
   activeFlowId: DEFAULT_ACTIVE_FLOW_ID,
@@ -165,6 +179,12 @@ const PLUS_GPC_CPA_SESSION_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.get
   plusPaymentMethod: 'gpc-helper',
   plusAccountAccessStrategy: PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION,
 }) || PLUS_GPC_STEP_DEFINITIONS;
+const PLUS_GPC_COCKPIT_TOOLS_SESSION_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.getSteps?.({
+  activeFlowId: DEFAULT_ACTIVE_FLOW_ID,
+  plusModeEnabled: true,
+  plusPaymentMethod: 'gpc-helper',
+  plusAccountAccessStrategy: PLUS_ACCOUNT_ACCESS_STRATEGY_COCKPIT_TOOLS_SESSION,
+}) || PLUS_GPC_STEP_DEFINITIONS;
 const PLUS_GPC_PHONE_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.getSteps?.({
   activeFlowId: DEFAULT_ACTIVE_FLOW_ID,
   plusModeEnabled: true,
@@ -193,16 +213,19 @@ const ALL_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.getAllSteps?.({
   ...PLUS_PAYPAL_STEP_DEFINITIONS,
   ...PLUS_PAYPAL_SUB2API_SESSION_STEP_DEFINITIONS,
   ...PLUS_PAYPAL_CPA_SESSION_STEP_DEFINITIONS,
+  ...PLUS_PAYPAL_COCKPIT_TOOLS_SESSION_STEP_DEFINITIONS,
   ...PLUS_PAYPAL_PHONE_STEP_DEFINITIONS,
   ...PLUS_PAYPAL_PHONE_BOUND_EMAIL_RELOGIN_STEP_DEFINITIONS,
   ...PLUS_GOPAY_STEP_DEFINITIONS,
   ...PLUS_GOPAY_SUB2API_SESSION_STEP_DEFINITIONS,
   ...PLUS_GOPAY_CPA_SESSION_STEP_DEFINITIONS,
+  ...PLUS_GOPAY_COCKPIT_TOOLS_SESSION_STEP_DEFINITIONS,
   ...PLUS_GOPAY_PHONE_STEP_DEFINITIONS,
   ...PLUS_GOPAY_PHONE_BOUND_EMAIL_RELOGIN_STEP_DEFINITIONS,
   ...PLUS_GPC_STEP_DEFINITIONS,
   ...PLUS_GPC_SUB2API_SESSION_STEP_DEFINITIONS,
   ...PLUS_GPC_CPA_SESSION_STEP_DEFINITIONS,
+  ...PLUS_GPC_COCKPIT_TOOLS_SESSION_STEP_DEFINITIONS,
   ...PLUS_GPC_PHONE_STEP_DEFINITIONS,
   ...PLUS_GPC_PHONE_BOUND_EMAIL_RELOGIN_STEP_DEFINITIONS,
 ];
@@ -776,6 +799,9 @@ function getStepDefinitionsForState(state = {}) {
     if (plusAccountAccessStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION) {
       return PLUS_GPC_CPA_SESSION_STEP_DEFINITIONS;
     }
+    if (plusAccountAccessStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_COCKPIT_TOOLS_SESSION) {
+      return PLUS_GPC_COCKPIT_TOOLS_SESSION_STEP_DEFINITIONS;
+    }
     return PLUS_GPC_STEP_DEFINITIONS;
   }
   if (paymentMethod === PLUS_PAYMENT_METHOD_GOPAY) {
@@ -785,6 +811,9 @@ function getStepDefinitionsForState(state = {}) {
     if (plusAccountAccessStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION) {
       return PLUS_GOPAY_CPA_SESSION_STEP_DEFINITIONS;
     }
+    if (plusAccountAccessStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_COCKPIT_TOOLS_SESSION) {
+      return PLUS_GOPAY_COCKPIT_TOOLS_SESSION_STEP_DEFINITIONS;
+    }
     return PLUS_GOPAY_STEP_DEFINITIONS;
   }
   if (plusAccountAccessStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION) {
@@ -792,6 +821,9 @@ function getStepDefinitionsForState(state = {}) {
   }
   if (plusAccountAccessStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION) {
     return PLUS_PAYPAL_CPA_SESSION_STEP_DEFINITIONS;
+  }
+  if (plusAccountAccessStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_COCKPIT_TOOLS_SESSION) {
+    return PLUS_PAYPAL_COCKPIT_TOOLS_SESSION_STEP_DEFINITIONS;
   }
   return PLUS_PAYPAL_STEP_DEFINITIONS;
 }
@@ -2571,6 +2603,9 @@ function normalizePanelMode(value = '') {
   if (normalized === 'codex2api') {
     return 'codex2api';
   }
+  if (normalized === 'cockpit-tools') {
+    return 'cockpit-tools';
+  }
   return 'cpa';
 }
 
@@ -2581,6 +2616,9 @@ function normalizePlusAccountAccessStrategy(value = '') {
   }
   if (normalized === PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION) {
     return PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION;
+  }
+  if (normalized === PLUS_ACCOUNT_ACCESS_STRATEGY_COCKPIT_TOOLS_SESSION) {
+    return PLUS_ACCOUNT_ACCESS_STRATEGY_COCKPIT_TOOLS_SESSION;
   }
   return PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH;
 }
@@ -2595,6 +2633,9 @@ function normalizePlusAccountAccessStrategyForState(state = {}) {
   }
   if (panelMode === 'cpa' && strategy === PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION) {
     return PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION;
+  }
+  if (panelMode === 'cockpit-tools' && strategy === PLUS_ACCOUNT_ACCESS_STRATEGY_COCKPIT_TOOLS_SESSION) {
+    return PLUS_ACCOUNT_ACCESS_STRATEGY_COCKPIT_TOOLS_SESSION;
   }
   return PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH;
 }
@@ -9085,6 +9126,7 @@ function getSourceLabel(source) {
     'vps-panel': 'CPA 面板',
     'sub2api-panel': 'SUB2API 后台',
     'codex2api-panel': 'Codex2API 后台',
+    'cockpit-tools-panel': 'cockpit-tools',
     'qq-mail': 'QQ 邮箱',
     'mail-163': '163 邮箱',
     'mail-2925': '2925 邮箱',
@@ -10740,6 +10782,8 @@ const AUTO_RUN_BACKGROUND_COMPLETED_STEP_KEYS = new Set([
   'plus-checkout-return',
   'sub2api-session-import',
   'cpa-session-import',
+  'cockpit-tools-session-ready',
+  'cockpit-tools-session-import',
   'oauth-login',
   'fetch-login-code',
   'post-login-phone-verification',
@@ -11852,6 +11896,8 @@ const AUTO_RUN_NODE_DELAYS = Object.freeze({
   'plus-checkout-return': 1000,
   'sub2api-session-import': 0,
   'cpa-session-import': 0,
+  'cockpit-tools-session-ready': 0,
+  'cockpit-tools-session-import': 0,
   'oauth-login': 2000,
   'fetch-login-code': 2000,
   'confirm-oauth': 1000,
@@ -13667,6 +13713,19 @@ const cpaSessionImportExecutor = self.MultiPageBackgroundCpaSessionImport?.creat
   throwIfStopped,
   waitForTabCompleteUntilStopped,
 });
+const cockpitToolsSessionImportExecutor = self.MultiPageBackgroundCockpitToolsSessionImport?.createCockpitToolsSessionImportExecutor({
+  addLog,
+  chrome,
+  completeNodeFromBackground,
+  ensureContentScriptReadyOnTabUntilStopped,
+  getTabId,
+  isTabAlive,
+  registerTab,
+  sendTabMessageUntilStopped,
+  sleepWithStop,
+  throwIfStopped,
+  waitForTabCompleteUntilStopped,
+});
 const plusSuccessSessionUploadManager = self.MultiPageBackgroundPlusSuccessSessionUpload?.createPlusSuccessSessionUploadManager({
   addLog,
   completeNodeFromBackground,
@@ -13747,6 +13806,8 @@ const stepExecutorsByKey = {
   'plus-checkout-return': (state) => plusReturnConfirmExecutor.executePlusReturnConfirm(state),
   'sub2api-session-import': (state) => sub2ApiSessionImportExecutor.executeSub2ApiSessionImport(state),
   'cpa-session-import': (state) => cpaSessionImportExecutor.executeCpaSessionImport(state),
+  'cockpit-tools-session-ready': (state) => cockpitToolsSessionImportExecutor.executeCockpitToolsSessionReady(state),
+  'cockpit-tools-session-import': (state) => cockpitToolsSessionImportExecutor.executeCockpitToolsSessionImport(state),
   'oauth-login': (state) => step7Executor.executeStep7(state),
   'fetch-login-code': (state) => step8Executor.executeStep8(state),
   'post-login-phone-verification': (state) => step8Executor.executePostLoginPhoneVerification(state),
@@ -13945,22 +14006,29 @@ const plusPayPalPhoneStepRegistry = buildStepRegistry(PLUS_PAYPAL_PHONE_STEP_DEF
 const plusPayPalPhoneBoundEmailReloginStepRegistry = buildStepRegistry(PLUS_PAYPAL_PHONE_BOUND_EMAIL_RELOGIN_STEP_DEFINITIONS);
 const plusPayPalSub2ApiSessionStepRegistry = buildStepRegistry(PLUS_PAYPAL_SUB2API_SESSION_STEP_DEFINITIONS);
 const plusPayPalCpaSessionStepRegistry = buildStepRegistry(PLUS_PAYPAL_CPA_SESSION_STEP_DEFINITIONS);
+const plusPayPalCockpitToolsSessionStepRegistry = buildStepRegistry(PLUS_PAYPAL_COCKPIT_TOOLS_SESSION_STEP_DEFINITIONS);
 const plusGoPayStepRegistry = buildStepRegistry(PLUS_GOPAY_STEP_DEFINITIONS);
 const plusGoPayPhoneStepRegistry = buildStepRegistry(PLUS_GOPAY_PHONE_STEP_DEFINITIONS);
 const plusGoPayPhoneBoundEmailReloginStepRegistry = buildStepRegistry(PLUS_GOPAY_PHONE_BOUND_EMAIL_RELOGIN_STEP_DEFINITIONS);
 const plusGoPaySub2ApiSessionStepRegistry = buildStepRegistry(PLUS_GOPAY_SUB2API_SESSION_STEP_DEFINITIONS);
 const plusGoPayCpaSessionStepRegistry = buildStepRegistry(PLUS_GOPAY_CPA_SESSION_STEP_DEFINITIONS);
+const plusGoPayCockpitToolsSessionStepRegistry = buildStepRegistry(PLUS_GOPAY_COCKPIT_TOOLS_SESSION_STEP_DEFINITIONS);
 const plusGpcStepRegistry = buildStepRegistry(PLUS_GPC_STEP_DEFINITIONS);
 const plusGpcPhoneStepRegistry = buildStepRegistry(PLUS_GPC_PHONE_STEP_DEFINITIONS);
 const plusGpcPhoneBoundEmailReloginStepRegistry = buildStepRegistry(PLUS_GPC_PHONE_BOUND_EMAIL_RELOGIN_STEP_DEFINITIONS);
 const plusGpcSub2ApiSessionStepRegistry = buildStepRegistry(PLUS_GPC_SUB2API_SESSION_STEP_DEFINITIONS);
 const plusGpcCpaSessionStepRegistry = buildStepRegistry(PLUS_GPC_CPA_SESSION_STEP_DEFINITIONS);
+const plusGpcCockpitToolsSessionStepRegistry = buildStepRegistry(PLUS_GPC_COCKPIT_TOOLS_SESSION_STEP_DEFINITIONS);
 const localCpaJsonNoRtStepRegistry = buildStepRegistry(LOCAL_CPA_JSON_NO_RT_STEP_DEFINITIONS);
 
 function getStepRegistryForState(state = {}) {
   const activeFlowId = String(state?.activeFlowId || DEFAULT_ACTIVE_FLOW_ID).trim().toLowerCase() || DEFAULT_ACTIVE_FLOW_ID;
   if (activeFlowId !== DEFAULT_ACTIVE_FLOW_ID) {
     throw new Error(`当前尚未注册 flow=${activeFlowId} 的步骤执行器。`);
+  }
+  const dynamicRegistry = buildStepRegistry(getNodeDefinitionsForState(state));
+  if (dynamicRegistry?.getOrderedNodes?.().length) {
+    return dynamicRegistry;
   }
   if (getPanelMode(state) === 'local-cpa-json-no-rt') {
     return localCpaJsonNoRtStepRegistry;
@@ -13985,6 +14053,9 @@ function getStepRegistryForState(state = {}) {
     if (plusAccountAccessStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION) {
       return plusGpcCpaSessionStepRegistry;
     }
+    if (plusAccountAccessStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_COCKPIT_TOOLS_SESSION) {
+      return plusGpcCockpitToolsSessionStepRegistry;
+    }
     if (signupMethod === SIGNUP_METHOD_PHONE) {
       return useBoundEmailRelogin ? plusGpcPhoneBoundEmailReloginStepRegistry : plusGpcPhoneStepRegistry;
     }
@@ -13997,6 +14068,9 @@ function getStepRegistryForState(state = {}) {
     if (plusAccountAccessStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION) {
       return plusGoPayCpaSessionStepRegistry;
     }
+    if (plusAccountAccessStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_COCKPIT_TOOLS_SESSION) {
+      return plusGoPayCockpitToolsSessionStepRegistry;
+    }
     if (signupMethod === SIGNUP_METHOD_PHONE) {
       return useBoundEmailRelogin ? plusGoPayPhoneBoundEmailReloginStepRegistry : plusGoPayPhoneStepRegistry;
     }
@@ -14007,6 +14081,9 @@ function getStepRegistryForState(state = {}) {
   }
   if (plusAccountAccessStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION) {
     return plusPayPalCpaSessionStepRegistry;
+  }
+  if (plusAccountAccessStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_COCKPIT_TOOLS_SESSION) {
+    return plusPayPalCockpitToolsSessionStepRegistry;
   }
   if (signupMethod === SIGNUP_METHOD_PHONE) {
     return useBoundEmailRelogin ? plusPayPalPhoneBoundEmailReloginStepRegistry : plusPayPalPhoneStepRegistry;

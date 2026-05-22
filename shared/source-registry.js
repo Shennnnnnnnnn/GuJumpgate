@@ -123,6 +123,15 @@
       driverId: 'content/sub2api-panel',
       cleanupScopes: [],
     },
+    'cockpit-tools-panel': {
+      flowId: 'openai',
+      kind: 'virtual-page',
+      label: 'cockpit-tools',
+      readyPolicy: 'disabled',
+      family: 'cockpit-tools-panel-family',
+      driverId: 'background/cockpit-tools-session-import',
+      cleanupScopes: [],
+    },
     'plus-checkout': {
       flowId: 'openai',
       kind: 'flow-page',

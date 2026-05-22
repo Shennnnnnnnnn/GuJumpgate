@@ -568,6 +568,7 @@ const BUILTIN_PLUS_CHECKOUT_CLOUD_CONVERSION_API_KEY = '2KwVxE6f0ABH002JLkoQJ9Re
 const PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH = 'oauth';
 const PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION = 'sub2api_codex_session';
 const PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION = 'cpa_codex_session';
+const PLUS_ACCOUNT_ACCESS_STRATEGY_COCKPIT_TOOLS_SESSION = 'cockpit_tools_session';
 const ACCOUNT_ACCESS_STRATEGY_UI_OAUTH = 'oauth';
 const ACCOUNT_ACCESS_STRATEGY_UI_SESSION_JSON = 'session_json';
 const DEFAULT_GPC_HELPER_API_URL = 'https://your-gpc-helper-domain.example';
@@ -820,6 +821,7 @@ const HERO_SMS_COUNTRY_ISO_CODE_BY_NAME = (() => {
 })();
 const LOCAL_CPA_JSON_PANEL_MODE = 'local-cpa-json';
 const LOCAL_CPA_JSON_NO_RT_PANEL_MODE = 'local-cpa-json-no-rt';
+const COCKPIT_TOOLS_PANEL_MODE = 'cockpit-tools';
 const DEFAULT_PANEL_MODE = LOCAL_CPA_JSON_PANEL_MODE;
 const DEFAULT_LOCAL_CPA_JSON_RELATIVE_AUTH_DIR = '.cli-proxy-api';
 const DEFAULT_LOCAL_CPA_STEP9_MODE = 'submit';
@@ -4082,6 +4084,7 @@ function collectSettingsPayload() {
         || normalized === 'local-cpa-json-no-rt'
         || normalized === 'sub2api'
         || normalized === 'codex2api'
+        || normalized === 'cockpit-tools'
         ? normalized
         : 'cpa';
     });
@@ -8171,6 +8174,7 @@ function normalizePanelMode(value = '') {
     || normalized === localCpaJsonNoRtMode
     || normalized === 'sub2api'
     || normalized === 'codex2api'
+    || normalized === COCKPIT_TOOLS_PANEL_MODE
   ) {
     return normalized;
   }
@@ -8184,6 +8188,9 @@ function normalizePlusAccountAccessStrategy(value = '') {
   }
   if (normalized === PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION) {
     return PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION;
+  }
+  if (normalized === PLUS_ACCOUNT_ACCESS_STRATEGY_COCKPIT_TOOLS_SESSION) {
+    return PLUS_ACCOUNT_ACCESS_STRATEGY_COCKPIT_TOOLS_SESSION;
   }
   return PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH;
 }
@@ -8213,6 +8220,9 @@ function getAccountAccessStrategyUiValueForState(state = latestState) {
   if (panelMode === 'cpa' && strategy === PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION) {
     return ACCOUNT_ACCESS_STRATEGY_UI_SESSION_JSON;
   }
+  if (panelMode === COCKPIT_TOOLS_PANEL_MODE && strategy === PLUS_ACCOUNT_ACCESS_STRATEGY_COCKPIT_TOOLS_SESSION) {
+    return ACCOUNT_ACCESS_STRATEGY_UI_SESSION_JSON;
+  }
   return ACCOUNT_ACCESS_STRATEGY_UI_OAUTH;
 }
 
@@ -8237,6 +8247,9 @@ function resolvePlusAccountAccessStrategyFromExportAndStrategy(exportTarget = ''
   if (target === 'cpa') {
     return PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION;
   }
+  if (target === COCKPIT_TOOLS_PANEL_MODE) {
+    return PLUS_ACCOUNT_ACCESS_STRATEGY_COCKPIT_TOOLS_SESSION;
+  }
   return PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH;
 }
 
@@ -8260,7 +8273,9 @@ function getSelectedExportSettings() {
   const exportTarget = getSelectedExportTarget();
   const strategyUiValue = exportTarget === 'codex2api'
     ? ACCOUNT_ACCESS_STRATEGY_UI_OAUTH
-    : getSelectedAccountAccessStrategyUiValue();
+    : (exportTarget === COCKPIT_TOOLS_PANEL_MODE
+      ? ACCOUNT_ACCESS_STRATEGY_UI_SESSION_JSON
+      : getSelectedAccountAccessStrategyUiValue());
   return {
     exportTarget,
     strategyUiValue,
@@ -11986,6 +12001,8 @@ function updatePanelModeUI() {
   );
   if (rawExportTarget === 'codex2api') {
     rawStrategyUiValue = ACCOUNT_ACCESS_STRATEGY_UI_OAUTH;
+  } else if (rawExportTarget === COCKPIT_TOOLS_PANEL_MODE) {
+    rawStrategyUiValue = ACCOUNT_ACCESS_STRATEGY_UI_SESSION_JSON;
   }
   const rawPanelMode = resolvePanelModeFromExportAndStrategy(rawExportTarget, rawStrategyUiValue);
   const rawPlusAccountAccessStrategy = resolvePlusAccountAccessStrategyFromExportAndStrategy(
@@ -12041,12 +12058,16 @@ function updatePanelModeUI() {
       : rawStrategyUiValue);
   if (exportTarget === 'codex2api') {
     strategyUiValue = ACCOUNT_ACCESS_STRATEGY_UI_OAUTH;
+  } else if (exportTarget === COCKPIT_TOOLS_PANEL_MODE) {
+    strategyUiValue = ACCOUNT_ACCESS_STRATEGY_UI_SESSION_JSON;
   }
   if (selectAccountAccessStrategy) {
     selectAccountAccessStrategy.value = strategyUiValue;
-    const lockStrategy = exportTarget === 'codex2api';
+    const lockStrategy = exportTarget === 'codex2api' || exportTarget === COCKPIT_TOOLS_PANEL_MODE;
     selectAccountAccessStrategy.disabled = lockStrategy;
-    selectAccountAccessStrategy.title = lockStrategy ? 'Codex2API 仅支持 OAuth' : '';
+    selectAccountAccessStrategy.title = exportTarget === 'codex2api'
+      ? 'Codex2API 仅支持 OAuth'
+      : (exportTarget === COCKPIT_TOOLS_PANEL_MODE ? 'cockpit-tools 使用 SESSION JSON 导入' : '');
     Array.from(selectAccountAccessStrategy.options || []).forEach((option) => {
       if (option.value === ACCOUNT_ACCESS_STRATEGY_UI_SESSION_JSON) {
         const sessionStrategy = resolvePlusAccountAccessStrategyFromExportAndStrategy(exportTarget, ACCOUNT_ACCESS_STRATEGY_UI_SESSION_JSON);
@@ -12066,12 +12087,13 @@ function updatePanelModeUI() {
   if (accountAccessStrategyCaption) {
     accountAccessStrategyCaption.textContent = exportTarget === 'codex2api'
       ? '仅支持 OAuth'
-      : '';
+      : (exportTarget === COCKPIT_TOOLS_PANEL_MODE ? '自动导入 SESSION JSON' : '');
   }
   const useLocalCpaJson = panelMode === LOCAL_CPA_JSON_PANEL_MODE || panelMode === LOCAL_CPA_JSON_NO_RT_PANEL_MODE;
   const useLocalCpaJsonNoRt = panelMode === LOCAL_CPA_JSON_NO_RT_PANEL_MODE;
   const useSub2Api = panelMode === 'sub2api';
   const useCodex2Api = panelMode === 'codex2api';
+  const useCockpitTools = panelMode === COCKPIT_TOOLS_PANEL_MODE;
   const useCpa = panelMode === 'cpa';
   const setRowDisplay = (row, visible) => {
     if (!row) {
@@ -12104,7 +12126,9 @@ function updatePanelModeUI() {
       ? (useLocalCpaJsonNoRt ? '本地CPA JSON 无RT 导出' : '本地CPA JSON 有RT 导出')
       : (useSub2Api
         ? 'SUB2API 回调验证'
-        : (useCodex2Api ? 'Codex2API 回调验证' : 'CPA 回调验证'));
+        : (useCodex2Api
+          ? 'Codex2API 回调验证'
+          : (useCockpitTools ? 'cockpit-tools 导入' : 'CPA 回调验证')));
   }
 }
 
@@ -12949,6 +12973,7 @@ function validateLocalCpaJsonPluginDir(options = {}) {
         || normalized === 'local-cpa-json-no-rt'
         || normalized === 'sub2api'
         || normalized === 'codex2api'
+        || normalized === 'cockpit-tools'
         ? normalized
         : 'cpa';
     });
@@ -14294,6 +14319,8 @@ selectPanelMode.addEventListener('change', async () => {
     selectPanelMode.value = nextExportTarget;
     if (nextExportTarget === 'codex2api' && selectAccountAccessStrategy) {
       selectAccountAccessStrategy.value = ACCOUNT_ACCESS_STRATEGY_UI_OAUTH;
+    } else if (nextExportTarget === COCKPIT_TOOLS_PANEL_MODE && selectAccountAccessStrategy) {
+      selectAccountAccessStrategy.value = ACCOUNT_ACCESS_STRATEGY_UI_SESSION_JSON;
     }
     updatePanelModeUI();
     const nextExportSettings = getSelectedExportSettings();
@@ -14346,6 +14373,8 @@ selectAccountAccessStrategy?.addEventListener('change', async () => {
   try {
     if (getSelectedExportTarget() === 'codex2api') {
       selectAccountAccessStrategy.value = ACCOUNT_ACCESS_STRATEGY_UI_OAUTH;
+    } else if (getSelectedExportTarget() === COCKPIT_TOOLS_PANEL_MODE) {
+      selectAccountAccessStrategy.value = ACCOUNT_ACCESS_STRATEGY_UI_SESSION_JSON;
     } else {
       selectAccountAccessStrategy.value = normalizeAccountAccessStrategyUiValue(selectAccountAccessStrategy.value);
     }

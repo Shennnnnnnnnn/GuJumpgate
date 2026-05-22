@@ -9,7 +9,8 @@
   const PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH = 'oauth';
   const PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION = 'sub2api_codex_session';
   const PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION = 'cpa_codex_session';
-  const VALID_PANEL_MODES = Object.freeze(['local-cpa-json', LOCAL_CPA_JSON_NO_RT_PANEL_MODE, 'cpa', 'sub2api', 'codex2api']);
+  const PLUS_ACCOUNT_ACCESS_STRATEGY_COCKPIT_TOOLS_SESSION = 'cockpit_tools_session';
+  const VALID_PANEL_MODES = Object.freeze(['local-cpa-json', LOCAL_CPA_JSON_NO_RT_PANEL_MODE, 'cpa', 'sub2api', 'codex2api', 'cockpit-tools']);
 
   const DEFAULT_FLOW_CAPABILITIES = Object.freeze({
     supportsEmailSignup: true,
@@ -31,7 +32,7 @@
       supportsPhoneVerificationSettings: true,
       supportsPlusMode: true,
       supportsContributionMode: true,
-      supportsPlatformBinding: ['local-cpa-json', LOCAL_CPA_JSON_NO_RT_PANEL_MODE, 'cpa', 'sub2api', 'codex2api'],
+      supportsPlatformBinding: ['local-cpa-json', LOCAL_CPA_JSON_NO_RT_PANEL_MODE, 'cpa', 'sub2api', 'codex2api', 'cockpit-tools'],
       supportsLuckmail: true,
       supportsOauthTimeoutBudget: true,
       stepDefinitionMode: 'openai-dynamic',
@@ -82,6 +83,13 @@
       supportsPhoneSignup: true,
       requiresPhoneSignupWarning: false,
     }),
+    'cockpit-tools': Object.freeze({
+      supportsPhoneSignup: true,
+      requiresPhoneSignupWarning: false,
+      supportedPlusAccountAccessStrategies: Object.freeze([
+        PLUS_ACCOUNT_ACCESS_STRATEGY_COCKPIT_TOOLS_SESSION,
+      ]),
+    }),
   });
 
   function normalizeFlowId(value = '', fallback = DEFAULT_FLOW_ID) {
@@ -116,6 +124,9 @@
     if (normalized === PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION) {
       return PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION;
     }
+    if (normalized === PLUS_ACCOUNT_ACCESS_STRATEGY_COCKPIT_TOOLS_SESSION) {
+      return PLUS_ACCOUNT_ACCESS_STRATEGY_COCKPIT_TOOLS_SESSION;
+    }
     return PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH;
   }
 
@@ -127,6 +138,9 @@
     if (normalizedPanelMode === 'cpa') {
       return PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION;
     }
+    if (normalizedPanelMode === 'cockpit-tools') {
+      return PLUS_ACCOUNT_ACCESS_STRATEGY_COCKPIT_TOOLS_SESSION;
+    }
     return PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH;
   }
 
@@ -135,6 +149,7 @@
     if (
       normalized === PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION
       || normalized === PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION
+      || normalized === PLUS_ACCOUNT_ACCESS_STRATEGY_COCKPIT_TOOLS_SESSION
     ) {
       return getPlusAccountSessionStrategyForPanel(panelMode);
     }
@@ -171,6 +186,9 @@
     }
     if (normalized === 'codex2api') {
       return 'Codex2API';
+    }
+    if (normalized === 'cockpit-tools') {
+      return 'cockpit-tools';
     }
     return 'CPA';
   }
@@ -528,6 +546,7 @@
     PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH,
     PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION,
     PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION,
+    PLUS_ACCOUNT_ACCESS_STRATEGY_COCKPIT_TOOLS_SESSION,
     SIGNUP_METHOD_EMAIL,
     SIGNUP_METHOD_PHONE,
     normalizeFlowId,
