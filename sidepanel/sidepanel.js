@@ -8273,9 +8273,7 @@ function getSelectedExportSettings() {
   const exportTarget = getSelectedExportTarget();
   const strategyUiValue = exportTarget === 'codex2api'
     ? ACCOUNT_ACCESS_STRATEGY_UI_OAUTH
-    : (exportTarget === COCKPIT_TOOLS_PANEL_MODE
-      ? ACCOUNT_ACCESS_STRATEGY_UI_SESSION_JSON
-      : getSelectedAccountAccessStrategyUiValue());
+    : getSelectedAccountAccessStrategyUiValue();
   return {
     exportTarget,
     strategyUiValue,
@@ -12052,6 +12050,7 @@ function updatePanelModeUI() {
     ? ACCOUNT_ACCESS_STRATEGY_UI_SESSION_JSON
     : (capabilityState?.effectivePlusAccountAccessStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION
       || capabilityState?.effectivePlusAccountAccessStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION
+      || capabilityState?.effectivePlusAccountAccessStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_COCKPIT_TOOLS_SESSION
       ? ACCOUNT_ACCESS_STRATEGY_UI_SESSION_JSON
       : rawStrategyUiValue);
   if (exportTarget === 'codex2api') {
@@ -14318,8 +14317,6 @@ selectPanelMode.addEventListener('change', async () => {
     selectPanelMode.value = nextExportTarget;
     if (nextExportTarget === 'codex2api' && selectAccountAccessStrategy) {
       selectAccountAccessStrategy.value = ACCOUNT_ACCESS_STRATEGY_UI_OAUTH;
-    } else if (nextExportTarget === COCKPIT_TOOLS_PANEL_MODE && selectAccountAccessStrategy) {
-      selectAccountAccessStrategy.value = ACCOUNT_ACCESS_STRATEGY_UI_SESSION_JSON;
     }
     updatePanelModeUI();
     const nextExportSettings = getSelectedExportSettings();
@@ -14372,8 +14369,6 @@ selectAccountAccessStrategy?.addEventListener('change', async () => {
   try {
     if (getSelectedExportTarget() === 'codex2api') {
       selectAccountAccessStrategy.value = ACCOUNT_ACCESS_STRATEGY_UI_OAUTH;
-    } else if (getSelectedExportTarget() === COCKPIT_TOOLS_PANEL_MODE) {
-      selectAccountAccessStrategy.value = ACCOUNT_ACCESS_STRATEGY_UI_SESSION_JSON;
     } else {
       selectAccountAccessStrategy.value = normalizeAccountAccessStrategyUiValue(selectAccountAccessStrategy.value);
     }
