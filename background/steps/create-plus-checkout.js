@@ -1063,6 +1063,44 @@ function FindProxyForURL(url, host) {
       return `${localPart}@gmail.com`;
     }
 
+    function normalizeHostedCheckoutEmail(value = '') {
+      const email = String(value || '').trim().toLowerCase();
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : '';
+    }
+
+    function getCurrentHotmailAccountEmail(state = {}) {
+      const currentId = String(state?.currentHotmailAccountId || '').trim();
+      const accounts = Array.isArray(state?.hotmailAccounts) ? state.hotmailAccounts : [];
+      const currentAccount = accounts.find((account) => String(account?.id || '').trim() === currentId)
+        || accounts.find((account) => Boolean(account?.current || account?.selected))
+        || null;
+      return normalizeHostedCheckoutEmail(currentAccount?.email);
+    }
+
+    function resolveHostedCheckoutEmail(state = {}) {
+      const signupMethod = String(state?.resolvedSignupMethod || state?.signupMethod || '').trim().toLowerCase();
+      const accountIdentifierType = String(state?.accountIdentifierType || '').trim().toLowerCase();
+      const isPhoneSignup = signupMethod === 'phone'
+        || accountIdentifierType === 'phone'
+        || Boolean(state?.signupPhoneNumber || state?.signupPhoneActivation || state?.signupPhoneCompletedActivation);
+      const registrationEmail = state?.registrationEmailState && typeof state.registrationEmailState === 'object'
+        ? normalizeHostedCheckoutEmail(state.registrationEmailState.current || state.registrationEmailState.previous)
+        : '';
+      const candidates = isPhoneSignup
+        ? [
+          registrationEmail,
+          normalizeHostedCheckoutEmail(state?.email),
+          getCurrentHotmailAccountEmail(state),
+          normalizeHostedCheckoutEmail(state?.hotmailEmail),
+          normalizeHostedCheckoutEmail(state?.outlookEmail),
+        ]
+        : [
+          normalizeHostedCheckoutEmail(state?.email),
+          registrationEmail,
+        ];
+      return candidates.find(Boolean) || buildHostedCheckoutRandomEmail();
+    }
+
     function buildHostedCheckoutRandomPassword() {
       const lowercase = 'abcdefghijklmnopqrstuvwxyz';
       const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -1153,10 +1191,10 @@ function FindProxyForURL(url, host) {
       };
     }
 
-    function buildHostedCheckoutGuestProfile(address = {}, config = {}) {
+    function buildHostedCheckoutGuestProfile(address = {}, config = {}, state = {}) {
       const card = buildHostedCheckoutVisaCard();
       return {
-        email: buildHostedCheckoutRandomEmail(),
+        email: resolveHostedCheckoutEmail(state),
         password: buildHostedCheckoutRandomPassword(),
         phone: String(config?.phone || '').trim(),
         firstName: 'James',
@@ -1333,6 +1371,7 @@ function FindProxyForURL(url, host) {
         source: 'background',
         payload: {
           address: guestProfile.address,
+          email: guestProfile.email,
         },
       });
       if (initialResult?.error) {
@@ -1574,7 +1613,9 @@ function FindProxyForURL(url, host) {
       await addLog(`步骤 6：hosted checkout 配置快照：${JSON.stringify(runtimeConfig?.diagnostics || {})}`, 'info');
       await addLog(`步骤 6：hosted checkout 初始电话配置为 ${runtimeConfig.phone || '(空)'}。`, 'info');
       await addLog(`步骤 6：hosted checkout 地址数据：${JSON.stringify(address)}`, 'info');
-      const guestProfile = buildHostedCheckoutGuestProfile(address, runtimeConfig);
+      const currentState = typeof getState === 'function' ? await getState() : {};
+      const guestProfile = buildHostedCheckoutGuestProfile(address, runtimeConfig, currentState);
+      await addLog(`步骤 6：hosted checkout 邮箱使用 ${guestProfile.email || '(空)'}。`, 'info');
       await runHostedCheckoutOpenAiFlow(tabId, guestProfile);
 
       const transitionTab = await waitForUrlMatch(

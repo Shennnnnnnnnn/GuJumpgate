@@ -235,6 +235,26 @@ function fillHostedOpenAiInputBySelector(selector, value) {
   return true;
 }
 
+function fillHostedOpenAiEmail(email = '') {
+  const value = String(email || '').trim();
+  if (!value) {
+    return false;
+  }
+  const selectors = [
+    '#email',
+    'input[name="email"]',
+    'input[autocomplete="email"]',
+    'input[inputmode="email"]',
+    'input[type="email"]',
+  ];
+  for (const selector of selectors) {
+    if (fillHostedOpenAiInputBySelector(selector, value)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function fillHostedOpenAiSelectByIdText(id, text) {
   const select = document.getElementById(String(id || '').trim());
   const expected = normalizeText(text);
@@ -418,6 +438,7 @@ async function runHostedOpenAiCheckoutStep(payload = {}) {
   await sleep(3000);
 
   const address = payload.address && typeof payload.address === 'object' ? payload.address : {};
+  fillHostedOpenAiEmail(payload.email);
   await selectCountryDropdown(findCountryDropdown(), 'US');
   fillHostedOpenAiInputBySelector('#billingAddressLine1', address.street || '');
   fillHostedOpenAiInputBySelector('#billingLocality', address.city || '');
