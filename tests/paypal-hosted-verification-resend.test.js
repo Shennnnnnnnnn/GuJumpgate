@@ -42,7 +42,7 @@ function loadPayPalFlowContext(options = {}) {
   });
   const limitedMessage = createElement({
     attrs: { class: 'message' },
-    textContent: 'Your account is limited. Please check your PayPal Account Overview page for information on how to resolve this problem.',
+    textContent: options.messageText || 'Your account is limited. Please check your PayPal Account Overview page for information on how to resolve this problem.',
   });
   const resendButton = createElement({
     attrs: { 'data-testid': 'resend-link' },
@@ -156,4 +156,15 @@ test('PayPal hosted state exposes limited account message', () => {
 
   assert.equal(state.payPalAccountLimitedVisible, true);
   assert.match(state.payPalAccountLimitedText, /account is limited/i);
+});
+
+test('PayPal hosted state exposes temporary checkout failure as terminal state', () => {
+  const { context } = loadPayPalFlowContext({
+    withVerification: false,
+    messageText: 'Things don’t appear to be working at the moment.',
+  });
+  const state = context.inspectPayPalState();
+
+  assert.equal(state.payPalTemporaryFailureVisible, true);
+  assert.match(state.payPalTemporaryFailureText, /things/i);
 });

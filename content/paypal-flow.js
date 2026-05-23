@@ -304,6 +304,17 @@ function findPayPalAccountLimitedMessage() {
   }) || null;
 }
 
+function findPayPalHostedTemporaryFailureMessage() {
+  const candidates = [
+    ...Array.from(document.querySelectorAll('p.message, .message')),
+    document.body,
+  ].filter(Boolean);
+  return candidates.find((node) => {
+    const text = normalizeText(node?.textContent || node?.innerText || '');
+    return /things\s+don.?t\s+appear\s+to\s+be\s+working\s+at\s+the\s+moment/i.test(text);
+  }) || null;
+}
+
 function findHostedReviewConsentButton() {
   const direct = document.getElementById('consentButton')
     || document.querySelector('button[data-testid="consentButton"]');
@@ -999,6 +1010,7 @@ function inspectPayPalState() {
   const verificationErrorAlert = findHostedVerificationErrorAlert();
   const verificationResendButton = findHostedVerificationResendButton();
   const accountLimitedMessage = findPayPalAccountLimitedMessage();
+  const temporaryFailureMessage = findPayPalHostedTemporaryFailureMessage();
   return {
     url: location.href,
     readyState: document.readyState,
@@ -1015,6 +1027,10 @@ function inspectPayPalState() {
     payPalAccountLimitedVisible: Boolean(accountLimitedMessage),
     payPalAccountLimitedText: accountLimitedMessage
       ? normalizeText(accountLimitedMessage.textContent || accountLimitedMessage.innerText || '')
+      : '',
+    payPalTemporaryFailureVisible: Boolean(temporaryFailureMessage),
+    payPalTemporaryFailureText: temporaryFailureMessage
+      ? normalizeText(temporaryFailureMessage.textContent || temporaryFailureMessage.innerText || '')
       : '',
     reviewConsentReady: Boolean(findHostedReviewConsentButton()),
     approveReady: Boolean(approveButton && isEnabledControl(approveButton)),

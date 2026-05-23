@@ -1614,6 +1614,16 @@ function FindProxyForURL(url, host) {
             url: currentUrl,
           };
         }
+        if (pageState.payPalTemporaryFailureVisible) {
+          await addLog(
+            `步骤 6：PayPal 返回临时不可用提示，按已进入 PayPal checkout 终态处理并继续后续 OAuth。提示：${pageState.payPalTemporaryFailureText || 'Things do not appear to be working at the moment.'}`,
+            'warn'
+          );
+          return {
+            terminalCheckoutSuccess: true,
+            url: currentUrl,
+          };
+        }
         if (
           pageState.hostedStage === 'verification'
           && pageState.verificationErrorVisible
@@ -1744,6 +1754,17 @@ function FindProxyForURL(url, host) {
         await completeNodeFromBackground('plus-checkout-create', {
           ...completionPayload,
           hostedCheckoutPayPalLimited: true,
+        });
+        return;
+      }
+      if (paypalResult?.terminalCheckoutSuccess) {
+        await setState({
+          hostedCheckoutPayPalLimitedAt: null,
+          hostedCheckoutPayPalLimitedUrl: '',
+        });
+        await completeNodeFromBackground('plus-checkout-create', {
+          ...completionPayload,
+          hostedCheckoutPayPalTerminalSuccess: true,
         });
         return;
       }
