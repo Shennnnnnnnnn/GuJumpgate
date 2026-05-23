@@ -4936,6 +4936,12 @@ function isAuthorizedHotmailRunAccount(candidate) {
     && Boolean(candidate.refreshToken);
 }
 
+function canAttemptHotmailMailboxAccess(candidate) {
+  return Boolean(candidate)
+    && Boolean(candidate.refreshToken)
+    && Boolean(String(candidate.email || '').trim());
+}
+
 function isPendingHotmailVerificationCandidate(candidate) {
   return Boolean(candidate)
     && candidate.status === 'pending'
@@ -4996,9 +5002,13 @@ async function ensureHotmailAccountForFlow(options = {}) {
     && !excludedAccountIds.has(candidate.id)
     && !isAliasCapacityExhausted(candidate, state)
   ));
-  const isReusableAuthorizedHotmailAccount = (account) => Boolean(account)
-    && account.status === 'authorized'
-    && Boolean(account.refreshToken);
+  const isReusableAuthorizedHotmailAccount = (account) => (
+    allowUsedCurrent
+      ? canAttemptHotmailMailboxAccess(account)
+      : Boolean(account)
+        && account.status === 'authorized'
+        && Boolean(account.refreshToken)
+  );
 
   const orderedCandidates = [];
   const addCandidate = (candidate) => {
@@ -5027,7 +5037,12 @@ async function ensureHotmailAccountForFlow(options = {}) {
       continue;
     }
     if (!isAuthorizedHotmailRunAccount(candidate) && !(allowUsedCurrent && isReusableAuthorizedHotmailAccount(candidate))) {
-      lastAllocationError = new Error(`Hotmail 账号 ${candidate.email || candidate.id} 尚未就绪，无法读取邮件。`);
+      const reason = !candidate.refreshToken
+        ? '缺少刷新令牌'
+        : (candidate.used && !allowUsedCurrent
+          ? '已标记为已用'
+          : `当前状态为 ${candidate.status || 'unknown'}`);
+      lastAllocationError = new Error(`Hotmail 账号 ${candidate.email || candidate.id} 尚未就绪，无法读取邮件（${reason}）。`);
       continue;
     }
     if (!allowUsedCurrent && isAliasCapacityExhausted(candidate, state)) {
