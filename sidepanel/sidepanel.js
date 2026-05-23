@@ -6751,8 +6751,7 @@ async function loadHeroSmsCountries() {
 
     applyOptions(optionItems, selectHeroSmsCountry);
     applyOptions(optionItems, selectHeroSmsCountryFallback);
-  } catch (error) {
-    console.warn('加载 HeroSMS 国家列表失败：', error);
+  } catch {
     const fallbackItems = HERO_SMS_FALLBACK_COUNTRY_ITEMS
       .map((item) => {
         const id = normalizeHeroSmsCountryId(item.id);
@@ -17279,9 +17278,7 @@ Promise.allSettled([
   const heroResult = results[0];
   const fiveSimResult = results[1];
   const nexSmsResult = results[2];
-  if (heroResult?.status === 'rejected') {
-    console.error('加载 HeroSMS 国家列表失败：', heroResult.reason);
-  }
+  void heroResult;
   if (fiveSimResult?.status === 'rejected') {
     console.error('加载 5sim 国家列表失败：', fiveSimResult.reason);
   }
