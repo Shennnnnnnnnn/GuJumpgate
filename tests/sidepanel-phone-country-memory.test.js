@@ -13,3 +13,12 @@ test('switching phone SMS provider persists and restores NexSMS country order', 
   assert.match(source, /previousProvider === PHONE_SMS_PROVIDER_NEXSMS[\s\S]*patch\.nexSmsCountryOrder/);
   assert.match(source, /normalizedNextProvider === PHONE_SMS_PROVIDER_NEXSMS[\s\S]*applyNexSmsCountrySelection/);
 });
+
+test('settings restore re-applies country priority with provider-specific selectors', () => {
+  assert.match(source, /restoredPhoneSmsProvider === PHONE_SMS_PROVIDER_FIVE_SIM[\s\S]*applyFiveSimCountrySelection/);
+  assert.match(source, /restoredPhoneSmsProvider === PHONE_SMS_PROVIDER_NEXSMS[\s\S]*applyNexSmsCountrySelection/);
+  assert.equal(
+    /previousPhoneSmsProvider !== restoredPhoneSmsProvider\)\s*\{\s*heroSmsCountrySelectionOrder = \[\];\s*loadHeroSmsCountries/.test(source),
+    false
+  );
+});

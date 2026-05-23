@@ -10211,12 +10211,6 @@ function applySettingsState(state) {
     })
     : [];
   updatePhoneSmsProviderOrderSummary(restoredPhoneSmsProviderOrder);
-  if (previousPhoneSmsProvider !== restoredPhoneSmsProvider) {
-    heroSmsCountrySelectionOrder = [];
-    loadHeroSmsCountries().catch((error) => {
-      console.warn('恢复接码平台后重新加载国家列表失败：', error);
-    });
-  }
   if (inputHeroSmsApiKey) {
     inputHeroSmsApiKey.value = restoredPhoneSmsProvider === PHONE_SMS_PROVIDER_FIVE_SIM
       ? (state?.fiveSimApiKey || '')
@@ -10305,26 +10299,74 @@ function applySettingsState(state) {
       normalizePhoneCodePollMaxRoundsValue(state?.phoneCodePollMaxRounds, DEFAULT_PHONE_CODE_POLL_MAX_ROUNDS)
     );
   }
-  if (typeof applyHeroSmsFallbackSelection === 'function') {
-    const primaryCountry = restoredPhoneSmsProvider === PHONE_SMS_PROVIDER_FIVE_SIM
-      ? {
-        id: normalizeFiveSimCountryId(state?.fiveSimCountryId),
-        label: normalizeFiveSimCountryLabel(state?.fiveSimCountryLabel),
+  if (restoredPhoneSmsProvider === PHONE_SMS_PROVIDER_FIVE_SIM) {
+    const restoreFiveSimSelection = () => {
+      if (typeof applyFiveSimCountrySelection === 'function') {
+        applyFiveSimCountrySelection(
+          Array.isArray(state?.fiveSimCountryOrder) && state.fiveSimCountryOrder.length
+            ? state.fiveSimCountryOrder
+            : [
+              {
+                id: normalizeFiveSimCountryId(state?.fiveSimCountryId),
+                code: normalizeFiveSimCountryId(state?.fiveSimCountryId),
+                label: normalizeFiveSimCountryLabel(state?.fiveSimCountryLabel),
+              },
+              ...normalizeFiveSimCountryFallbackList(state?.fiveSimCountryFallback || []),
+            ],
+          { ensureDefault: false }
+        );
       }
-      : {
+      updateHeroSmsPlatformDisplay();
+    };
+    restoreFiveSimSelection();
+    if (previousPhoneSmsProvider !== restoredPhoneSmsProvider && typeof loadFiveSimCountries === 'function') {
+      loadFiveSimCountries()
+        .then(restoreFiveSimSelection)
+        .catch((error) => {
+          console.warn('恢复 5sim 国家列表失败：', error);
+        });
+    }
+  } else if (restoredPhoneSmsProvider === PHONE_SMS_PROVIDER_NEXSMS) {
+    const restoreNexSmsSelection = () => {
+      if (typeof applyNexSmsCountrySelection === 'function') {
+        applyNexSmsCountrySelection(
+          Array.isArray(state?.nexSmsCountryOrder) ? state.nexSmsCountryOrder : [],
+          { ensureDefault: false }
+        );
+      }
+      updateHeroSmsPlatformDisplay();
+    };
+    restoreNexSmsSelection();
+    if (previousPhoneSmsProvider !== restoredPhoneSmsProvider && typeof loadNexSmsCountries === 'function') {
+      loadNexSmsCountries()
+        .then(restoreNexSmsSelection)
+        .catch((error) => {
+          console.warn('恢复 NexSMS 国家列表失败：', error);
+        });
+    }
+  } else if (typeof applyHeroSmsFallbackSelection === 'function') {
+    const restoreHeroSmsSelection = () => {
+      const primaryCountry = {
         id: normalizeHeroSmsCountryId(state?.heroSmsCountryId),
         label: normalizeHeroSmsCountryLabel(state?.heroSmsCountryLabel),
       };
-    applyHeroSmsFallbackSelection(
-      [
-        primaryCountry,
-        ...(restoredPhoneSmsProvider === PHONE_SMS_PROVIDER_FIVE_SIM
-          ? normalizeFiveSimCountryFallbackList(state?.fiveSimCountryFallback || [])
-          : normalizeHeroSmsCountryFallbackList(state?.heroSmsCountryFallback || [])),
-      ],
-      { includePrimary: true }
-    );
-    updateHeroSmsPlatformDisplay();
+      applyHeroSmsFallbackSelection(
+        [
+          primaryCountry,
+          ...normalizeHeroSmsCountryFallbackList(state?.heroSmsCountryFallback || []),
+        ],
+        { includePrimary: true }
+      );
+      updateHeroSmsPlatformDisplay();
+    };
+    restoreHeroSmsSelection();
+    if (previousPhoneSmsProvider !== restoredPhoneSmsProvider && typeof loadHeroSmsCountries === 'function') {
+      loadHeroSmsCountries()
+        .then(restoreHeroSmsSelection)
+        .catch((error) => {
+          console.warn('恢复 HeroSMS 国家列表失败：', error);
+        });
+    }
   } else if (selectHeroSmsCountry) {
     const restoredCountryId = restoredPhoneSmsProvider === PHONE_SMS_PROVIDER_FIVE_SIM
       ? String(normalizeFiveSimCountryId(state?.fiveSimCountryId))
