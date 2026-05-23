@@ -665,7 +665,7 @@ const DEFAULT_PHONE_SMS_PROVIDER_ORDER = Object.freeze([
   PHONE_SMS_PROVIDER_FIVE_SIM,
   PHONE_SMS_PROVIDER_NEXSMS,
 ]);
-const DEFAULT_FIVE_SIM_COUNTRY_ORDER = Object.freeze(['thailand']);
+const DEFAULT_FIVE_SIM_COUNTRY_ORDER = Object.freeze(['brazil', 'chile']);
 const DEFAULT_FIVE_SIM_OPERATOR = 'any';
 const DEFAULT_FIVE_SIM_PRODUCT = 'openai';
 const DEFAULT_NEX_SMS_COUNTRY_ORDER = Object.freeze([1]);
@@ -1102,9 +1102,11 @@ const CONTRIBUTION_UPLOAD_URL = '';
 const DEFAULT_PHONE_VERIFICATION_ENABLED = false;
 const DEFAULT_HERO_SMS_COUNTRY_ID = 52;
 const DEFAULT_HERO_SMS_COUNTRY_LABEL = 'Thailand';
-const DEFAULT_FIVE_SIM_COUNTRY_ID = 'vietnam';
-const DEFAULT_FIVE_SIM_COUNTRY_LABEL = '越南 (Vietnam)';
+const DEFAULT_FIVE_SIM_COUNTRY_ID = 'brazil';
+const DEFAULT_FIVE_SIM_COUNTRY_LABEL = '巴西 (Brazil)';
 const FIVE_SIM_SUPPORTED_COUNTRY_ITEMS = Object.freeze([
+  { id: 'brazil', chn: '巴西', eng: 'Brazil', searchText: 'brazil 巴西 Brazil BR +55' },
+  { id: 'chile', chn: '智利', eng: 'Chile', searchText: 'chile 智利 Chile CL +56' },
   { id: 'indonesia', chn: '印度尼西亚', eng: 'Indonesia', searchText: 'indonesia 印度尼西亚 印尼 Indonesia ID +62' },
   { id: 'thailand', chn: '泰国', eng: 'Thailand', searchText: 'thailand 泰国 Thailand TH +66' },
   { id: 'england', chn: '英国', eng: 'England', searchText: 'england 英国 England UK GB United Kingdom +44' },
@@ -4973,7 +4975,7 @@ function getSelectedPhoneSmsProvider() {
   return normalized;
 }
 
-function normalizeFiveSimCountryCode(value = '', fallback = 'thailand') {
+function normalizeFiveSimCountryCode(value = '', fallback = DEFAULT_FIVE_SIM_COUNTRY_ID) {
   const normalized = String(value || '')
     .trim()
     .toLowerCase()
@@ -5154,7 +5156,7 @@ function getFiveSimCountryDisplayNameByIso(isoCode = '') {
 }
 
 function buildFiveSimCountryDisplayLabel(country = {}) {
-  const code = normalizeFiveSimCountryCode(country.code || country.id || country.country || '', 'thailand');
+  const code = normalizeFiveSimCountryCode(country.code || country.id || country.country || '', DEFAULT_FIVE_SIM_COUNTRY_ID);
   const english = String(country.text_en || country.eng || country.english || code).trim();
   const iso = String(
     country.isoCode

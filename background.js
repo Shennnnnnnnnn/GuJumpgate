@@ -640,7 +640,7 @@ const DEFAULT_PHONE_SMS_PROVIDER_ORDER = Object.freeze([
 const DEFAULT_FIVE_SIM_BASE_URL = 'https://5sim.net/v1';
 const DEFAULT_FIVE_SIM_PRODUCT = 'openai';
 const DEFAULT_FIVE_SIM_OPERATOR = 'any';
-const DEFAULT_FIVE_SIM_COUNTRY_ORDER = Object.freeze(['thailand']);
+const DEFAULT_FIVE_SIM_COUNTRY_ORDER = Object.freeze(['brazil', 'chile']);
 const DEFAULT_NEX_SMS_BASE_URL = 'https://api.nexsms.net';
 const DEFAULT_NEX_SMS_SERVICE_CODE = 'ot';
 const DEFAULT_NEX_SMS_COUNTRY_ORDER = Object.freeze([1]);
@@ -649,9 +649,9 @@ const HERO_SMS_ACQUIRE_PRIORITY_COUNTRY = 'country';
 const HERO_SMS_ACQUIRE_PRIORITY_PRICE = 'price';
 const HERO_SMS_ACQUIRE_PRIORITY_PRICE_HIGH = 'price_high';
 const DEFAULT_HERO_SMS_ACQUIRE_PRIORITY = HERO_SMS_ACQUIRE_PRIORITY_COUNTRY;
-const FIVE_SIM_COUNTRY_ID = 'vietnam';
-const FIVE_SIM_COUNTRY_LABEL = '越南 (Vietnam)';
-const FIVE_SIM_SUPPORTED_COUNTRY_IDS = ['indonesia', 'thailand', 'vietnam'];
+const FIVE_SIM_COUNTRY_ID = 'brazil';
+const FIVE_SIM_COUNTRY_LABEL = '巴西 (Brazil)';
+const FIVE_SIM_SUPPORTED_COUNTRY_IDS = ['brazil', 'chile', 'indonesia', 'thailand', 'vietnam'];
 const FIVE_SIM_SUPPORTED_COUNTRY_ID_SET = new Set(FIVE_SIM_SUPPORTED_COUNTRY_IDS);
 const HERO_SMS_SUPPORTED_COUNTRY_IDS = [6, 52, 187, 16, 151, 43, 73, 10];
 const HERO_SMS_SUPPORTED_COUNTRY_ID_SET = new Set(HERO_SMS_SUPPORTED_COUNTRY_IDS.map(String));
@@ -1918,7 +1918,7 @@ function normalizeFiveSimCountryId(value, fallback = FIVE_SIM_COUNTRY_ID) {
   return normalizedFallback || FIVE_SIM_COUNTRY_ID;
 }
 
-function normalizeFiveSimCountryCode(value = '', fallback = 'thailand') {
+function normalizeFiveSimCountryCode(value = '', fallback = 'brazil') {
   const normalized = String(value || '')
     .trim()
     .toLowerCase()

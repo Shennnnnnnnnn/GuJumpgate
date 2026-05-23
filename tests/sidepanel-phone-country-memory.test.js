@@ -22,3 +22,10 @@ test('settings restore re-applies country priority with provider-specific select
     false
   );
 });
+
+test('5sim default country priority starts with Brazil then Chile', () => {
+  assert.match(source, /const DEFAULT_FIVE_SIM_COUNTRY_ORDER = Object\.freeze\(\['brazil', 'chile'\]\)/);
+  assert.match(source, /const DEFAULT_FIVE_SIM_COUNTRY_ID = 'brazil'/);
+  assert.match(source, /id: 'brazil', chn: '巴西', eng: 'Brazil'/);
+  assert.match(source, /id: 'chile', chn: '智利', eng: 'Chile'/);
+});

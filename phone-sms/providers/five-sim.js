@@ -6,13 +6,15 @@
   const DEFAULT_BASE_URL = 'https://5sim.net';
   const DEFAULT_PRODUCT = 'openai';
   const DEFAULT_OPERATOR = 'any';
-  const DEFAULT_COUNTRY_ID = 'vietnam';
-  const DEFAULT_COUNTRY_LABEL = '越南 (Vietnam)';
+  const DEFAULT_COUNTRY_ID = 'brazil';
+  const DEFAULT_COUNTRY_LABEL = '巴西 (Brazil)';
   const DEFAULT_REQUEST_TIMEOUT_MS = 20000;
   const DEFAULT_MAX_USES = 3;
   const FIVE_SIM_RATE_LIMIT_ERROR_PREFIX = 'FIVE_SIM_RATE_LIMIT::';
   const MAX_PRICE_CANDIDATES = 8;
   const SUPPORTED_COUNTRY_ITEMS = Object.freeze([
+    { id: 'brazil', label: '巴西 (Brazil)' },
+    { id: 'chile', label: '智利 (Chile)' },
     { id: 'indonesia', label: '印度尼西亚 (Indonesia)' },
     { id: 'thailand', label: '泰国 (Thailand)' },
     { id: 'england', label: '英国 (England)' },
