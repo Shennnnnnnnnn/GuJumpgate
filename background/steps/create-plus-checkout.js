@@ -1208,13 +1208,45 @@ function FindProxyForURL(url, host) {
     }
 
     function extractHostedCheckoutVerificationCode(payload = {}) {
+      const pushCandidate = (bucket, value) => {
+        const text = String(value ?? '').trim();
+        if (text) {
+          bucket.push(text);
+        }
+      };
+      const collectNestedCandidates = (value, bucket, depth = 0) => {
+        if (depth > 4 || value === null || value === undefined) {
+          return;
+        }
+        if (typeof value === 'string' || typeof value === 'number') {
+          pushCandidate(bucket, value);
+          return;
+        }
+        if (Array.isArray(value)) {
+          value.forEach((item) => collectNestedCandidates(item, bucket, depth + 1));
+          return;
+        }
+        if (typeof value === 'object') {
+          ['code', 'verificationCode', 'otp', 'text', 'message', 'msg'].forEach((key) => {
+            if (Object.prototype.hasOwnProperty.call(value, key)) {
+              collectNestedCandidates(value[key], bucket, depth + 1);
+            }
+          });
+          ['data', 'result', 'payload'].forEach((key) => {
+            if (Object.prototype.hasOwnProperty.call(value, key)) {
+              collectNestedCandidates(value[key], bucket, depth + 1);
+            }
+          });
+        }
+      };
       const candidates = [
-        payload?.data,
+        payload?.data?.code,
         payload?.code,
+        payload?.data,
         payload?.text,
         payload?.message,
-        payload,
       ];
+      collectNestedCandidates(payload, candidates);
       for (const candidate of candidates) {
         const text = String(candidate || '').trim();
         if (!text) {
@@ -1230,6 +1262,70 @@ function FindProxyForURL(url, host) {
         }
       }
       return '';
+    }
+
+    async function generatePlusCheckoutLinkManually(options = {}) {
+      const state = await getState?.() || {};
+      const paymentMethod = normalizePlusPaymentMethod(options?.paymentMethod || state?.plusPaymentMethod);
+      if (paymentMethod === PLUS_PAYMENT_METHOD_GPC_HELPER) {
+        throw new Error('GPC 模式请使用完整流程创建任务，不支持手动生成 checkout 链接。');
+      }
+      const tabId = await openFreshChatGptTabForCheckoutCreate();
+      try {
+        await waitForTabCompleteUntilStopped(tabId);
+        await sleepWithStop(1000);
+        await ensureContentScriptReadyOnTabUntilStopped(PLUS_CHECKOUT_SOURCE, tabId, {
+          inject: PLUS_CHECKOUT_INJECT_FILES,
+          injectSource: PLUS_CHECKOUT_SOURCE,
+          logMessage: '正在等待 ChatGPT 页面完成加载，再生成 checkout 链接...',
+        });
+        const useCloudCheckoutConversion = isPlusCheckoutCloudConversionEnabled(state, paymentMethod);
+        let result = null;
+        if (useCloudCheckoutConversion) {
+          const accessToken = await readAccessTokenFromChatGptSessionTab(tabId);
+          if (!accessToken) {
+            throw new Error('云端支付转换未获取到可用 accessToken。');
+          }
+          result = await generateCloudCheckoutFromApi(accessToken, paymentMethod, state);
+        } else {
+          result = await sendTabMessageUntilStopped(tabId, PLUS_CHECKOUT_SOURCE, {
+            type: 'CREATE_PLUS_CHECKOUT',
+            source: 'background',
+            payload: { paymentMethod },
+          });
+          if (result?.error) {
+            throw new Error(result.error);
+          }
+        }
+        const targetCheckoutUrl = String(
+          result?.preferredCheckoutUrl
+          || result?.hostedCheckoutUrl
+          || result?.hostedCheckoutBaseUrl
+          || result?.convertedCheckoutUrl
+          || result?.chatgptCheckoutUrl
+          || result?.checkoutUrl
+          || ''
+        ).trim();
+        if (!targetCheckoutUrl) {
+          throw new Error('未返回可用的 checkout 链接。');
+        }
+        await setState?.({
+          plusCheckoutUrl: targetCheckoutUrl,
+          plusCheckoutCountry: result?.country || (paymentMethod === PLUS_PAYMENT_METHOD_GOPAY ? 'ID' : 'US'),
+          plusCheckoutCurrency: result?.currency || (paymentMethod === PLUS_PAYMENT_METHOD_GOPAY ? 'IDR' : 'USD'),
+          plusCheckoutSource: result?.checkoutSource || (useCloudCheckoutConversion ? 'cloud-converted-checkout' : 'manual-checkout-link'),
+        });
+        return {
+          checkoutUrl: targetCheckoutUrl,
+          country: result?.country || '',
+          currency: result?.currency || '',
+          checkoutSource: result?.checkoutSource || '',
+        };
+      } finally {
+        if (chrome?.tabs?.remove && Number.isInteger(tabId)) {
+          await chrome.tabs.remove(tabId).catch(() => {});
+        }
+      }
     }
 
     async function fetchHostedCheckoutVerificationCode() {
@@ -2274,6 +2370,7 @@ function FindProxyForURL(url, host) {
     return {
       executePlusCheckoutCreate,
       fetchHostedCheckoutVerificationCodeManually,
+      generatePlusCheckoutLinkManually,
       testCheckoutConversionProxy,
     };
   }

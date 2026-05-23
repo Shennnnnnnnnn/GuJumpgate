@@ -35,6 +35,7 @@
       exportCurrentSessionJson,
       exportSettingsBundle,
       fetchHostedCheckoutVerificationCodeManually = null,
+      generatePlusCheckoutLinkManually = null,
       testCheckoutConversionProxy = null,
       fetchGeneratedEmail,
       refreshGpcCardBalance,
@@ -1859,6 +1860,24 @@
             ok: true,
             code: String(result?.code || '').trim(),
             verificationUrl: String(result?.verificationUrl || '').trim(),
+          };
+        }
+
+        case 'GENERATE_PLUS_CHECKOUT_LINK': {
+          const state = await getState();
+          if (isAutoRunLockedState(state)) {
+            throw new Error('自动流程运行中，当前不能手动生成 checkout 链接。');
+          }
+          if (typeof generatePlusCheckoutLinkManually !== 'function') {
+            throw new Error('生成 checkout 链接能力尚未接入。');
+          }
+          const result = await generatePlusCheckoutLinkManually(message.payload || {});
+          return {
+            ok: true,
+            checkoutUrl: String(result?.checkoutUrl || '').trim(),
+            country: String(result?.country || '').trim(),
+            currency: String(result?.currency || '').trim(),
+            checkoutSource: String(result?.checkoutSource || '').trim(),
           };
         }
 

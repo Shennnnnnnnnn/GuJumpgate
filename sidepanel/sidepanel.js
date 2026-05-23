@@ -199,6 +199,7 @@ const rowPlusCheckoutConversionProxy = document.getElementById('row-plus-checkou
 const inputPlusCheckoutConversionProxy = document.getElementById('input-plus-checkout-conversion-proxy');
 const rowPlusCheckoutConversionProxyTest = document.getElementById('row-plus-checkout-conversion-proxy-test');
 const btnPlusCheckoutConversionProxyTest = document.getElementById('btn-plus-checkout-conversion-proxy-test');
+const btnPlusCheckoutGenerateLink = document.getElementById('btn-plus-checkout-generate-link');
 const inputPlusCheckoutCloudConversionEnabled = document.getElementById('input-plus-checkout-cloud-conversion-enabled');
 const rowPlusCheckoutCloudConversionApiUrl = document.getElementById('row-plus-checkout-cloud-conversion-api-url');
 const inputPlusCheckoutCloudConversionApiUrl = document.getElementById('input-plus-checkout-cloud-conversion-api-url');
@@ -15557,6 +15558,13 @@ function updatePlusCheckoutConversionModeUi() {
       ? '已启用云端支付转换，本地支付转换代理测试不可用。'
       : '';
   }
+  if (typeof btnPlusCheckoutGenerateLink !== 'undefined' && btnPlusCheckoutGenerateLink) {
+    btnPlusCheckoutGenerateLink.disabled = !plusModeEnabled || !paypalMode;
+    btnPlusCheckoutGenerateLink.setAttribute('aria-disabled', btnPlusCheckoutGenerateLink.disabled ? 'true' : 'false');
+    btnPlusCheckoutGenerateLink.title = plusModeEnabled && paypalMode
+      ? '按当前支付转换设置生成 checkout 链接'
+      : '仅 PayPal Plus 模式可生成 checkout 链接';
+  }
   if (typeof rowPlusCheckoutCloudConversionApiUrl !== 'undefined' && rowPlusCheckoutCloudConversionApiUrl) {
     rowPlusCheckoutCloudConversionApiUrl.style.display = cloudRowsVisible ? '' : 'none';
   }
@@ -15643,6 +15651,67 @@ async function handlePlusCheckoutConversionProxyTest() {
   }
 }
 
+async function handlePlusCheckoutGenerateLink() {
+  if (!btnPlusCheckoutGenerateLink) {
+    return;
+  }
+  const validation = validatePlusCheckoutCloudConversionConfig();
+  if (!validation.valid) {
+    setPlusCheckoutConversionProxyTestResult('配置错误', {
+      status: 'error',
+      detail: validation.message,
+    });
+    showToast(validation.message, 'error');
+    return;
+  }
+
+  const previousLabel = btnPlusCheckoutGenerateLink.textContent;
+  btnPlusCheckoutGenerateLink.disabled = true;
+  btnPlusCheckoutGenerateLink.textContent = '生成中...';
+  setPlusCheckoutConversionProxyTestResult('生成中...', {
+    status: 'running',
+    detail: '正在读取当前 ChatGPT accessToken 并生成 checkout 链接。',
+  });
+
+  try {
+    const response = await sendRuntimeMessageWithTimeout({
+      type: 'GENERATE_PLUS_CHECKOUT_LINK',
+      source: 'sidepanel',
+      payload: {
+        paymentMethod: typeof selectPlusPaymentMethod !== 'undefined' && selectPlusPaymentMethod
+          ? selectPlusPaymentMethod.value
+          : latestState?.plusPaymentMethod,
+      },
+    }, 60000, '生成 checkout 链接');
+    if (response?.error) {
+      throw new Error(response.error);
+    }
+    const checkoutUrl = String(response?.checkoutUrl || '').trim();
+    if (!checkoutUrl) {
+      throw new Error('未返回 checkout 链接。');
+    }
+    setPlusCheckoutConversionProxyTestResult('已生成 checkout 链接', {
+      status: 'success',
+      detail: checkoutUrl,
+    });
+    if (typeof copyTextToClipboard === 'function') {
+      await copyTextToClipboard(checkoutUrl).catch(() => {});
+    }
+    showToast('已生成 checkout 链接并尝试复制到剪贴板。', 'success', 2600);
+  } catch (error) {
+    const message = error?.message || String(error || '生成 checkout 链接失败');
+    setPlusCheckoutConversionProxyTestResult('生成失败', {
+      status: 'error',
+      detail: message,
+    });
+    showToast(message, 'error');
+  } finally {
+    btnPlusCheckoutGenerateLink.disabled = false;
+    btnPlusCheckoutGenerateLink.textContent = previousLabel || '生成 checkout 链接';
+    updatePlusCheckoutConversionModeUi();
+  }
+}
+
 async function handleHostedCheckoutManualFetch() {
   if (!btnHostedCheckoutManualFetch) {
     return;
@@ -15716,6 +15785,11 @@ inputPlusCheckoutConversionProxy?.addEventListener('blur', () => {
 btnPlusCheckoutConversionProxyTest?.addEventListener('click', () => {
   handlePlusCheckoutConversionProxyTest().catch((error) => {
     showToast(error?.message || String(error || '支付转换代理测试失败'), 'error');
+  });
+});
+btnPlusCheckoutGenerateLink?.addEventListener('click', () => {
+  handlePlusCheckoutGenerateLink().catch((error) => {
+    showToast(error?.message || String(error || '生成 checkout 链接失败'), 'error');
   });
 });
 

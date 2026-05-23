@@ -13938,6 +13938,7 @@ const messageRouter = self.MultiPageBackgroundMessageRouter?.createMessageRouter
   }),
   exportSettingsBundle,
   fetchHostedCheckoutVerificationCodeManually: (...args) => plusCheckoutCreateExecutor.fetchHostedCheckoutVerificationCodeManually(...args),
+  generatePlusCheckoutLinkManually: (...args) => plusCheckoutCreateExecutor.generatePlusCheckoutLinkManually(...args),
   testCheckoutConversionProxy: (...args) => plusCheckoutCreateExecutor.testCheckoutConversionProxy(...args),
   fetchGeneratedEmail,
   refreshGpcCardBalance,
