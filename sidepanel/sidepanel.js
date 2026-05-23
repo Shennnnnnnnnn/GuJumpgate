@@ -9691,7 +9691,12 @@ function syncStepDefinitionsForMode(plusModeEnabled = false, plusPaymentMethodOr
   const noRtPanelMode = typeof LOCAL_CPA_JSON_NO_RT_PANEL_MODE === 'string'
     ? LOCAL_CPA_JSON_NO_RT_PANEL_MODE
     : 'local-cpa-json-no-rt';
-  const nextPanelMode = String(options.panelMode || (typeof latestState !== 'undefined' ? latestState?.panelMode : '') || '').trim().toLowerCase();
+  const nextPanelMode = String(
+    options.panelMode
+    || (typeof getSelectedPanelMode === 'function' ? getSelectedPanelMode() : '')
+    || (typeof latestState !== 'undefined' ? latestState?.panelMode : '')
+    || ''
+  ).trim().toLowerCase();
   const useNoRtWorkflow = nextPanelMode === noRtPanelMode;
   const currentlyUsingNoRtWorkflow = (typeof workflowNodes !== 'undefined' ? workflowNodes : [])
     .some((node) => String(node?.nodeId || '').trim() === 'local-cpa-json-export');
@@ -9705,8 +9710,10 @@ function syncStepDefinitionsForMode(plusModeEnabled = false, plusPaymentMethodOr
   const currentPaymentStep = stepDefinitions.find((step) => step.key === 'paypal-approve');
   const nextPaymentTitle = rootScope.MultiPageStepDefinitions?.getPlusPaymentStepTitle?.({
     activeFlowId: nextActiveFlowId,
+    panelMode: nextPanelMode,
     plusModeEnabled: nextPlusModeEnabled,
     plusPaymentMethod: nextPaymentMethod,
+    plusAccountAccessStrategy: nextAccountAccessStrategy,
     signupMethod: nextSignupMethod,
     phoneSignupReloginAfterBindEmailEnabled: nextPhoneSignupReloginAfterBindEmailEnabled,
   });
@@ -9725,7 +9732,7 @@ function syncStepDefinitionsForMode(plusModeEnabled = false, plusPaymentMethodOr
 
   rebuildStepDefinitionState(nextPlusModeEnabled, {
     activeFlowId: nextActiveFlowId,
-    ...(useNoRtWorkflow ? { panelMode: nextPanelMode } : {}),
+    panelMode: nextPanelMode,
     plusPaymentMethod: nextPaymentMethod,
     plusAccountAccessStrategy: nextAccountAccessStrategy,
     signupMethod: nextSignupMethod,
@@ -14331,6 +14338,7 @@ selectPanelMode.addEventListener('change', async () => {
         selectAccountAccessStrategy.value = previousStrategyUiValue;
       }
       updatePanelModeUI();
+      updatePhoneVerificationSettingsUI();
       return;
     }
     syncLatestState({
@@ -14346,6 +14354,7 @@ selectPanelMode.addEventListener('change', async () => {
       phoneSignupReloginAfterBindEmailEnabled: currentPhoneSignupReloginAfterBindEmailEnabled,
     });
     updatePanelModeUI();
+    updatePhoneVerificationSettingsUI();
     markSettingsDirty(true);
     saveSettings({ silent: true }).catch((error) => {
       console.error('Failed to save panel mode setting:', error);
@@ -14358,6 +14367,7 @@ selectPanelMode.addEventListener('change', async () => {
       selectAccountAccessStrategy.value = previousStrategyUiValue;
     }
     updatePanelModeUI();
+    updatePhoneVerificationSettingsUI();
     showToast(`切换导出模式失败：${error.message}`, 'error');
   }
 });
@@ -14381,6 +14391,7 @@ selectAccountAccessStrategy?.addEventListener('change', async () => {
       selectPanelMode.value = previousExportTarget;
       selectAccountAccessStrategy.value = previousStrategyUiValue;
       updatePanelModeUI();
+      updatePhoneVerificationSettingsUI();
       return;
     }
     syncLatestState({
@@ -14396,6 +14407,7 @@ selectAccountAccessStrategy?.addEventListener('change', async () => {
       phoneSignupReloginAfterBindEmailEnabled: currentPhoneSignupReloginAfterBindEmailEnabled,
     });
     updatePanelModeUI();
+    updatePhoneVerificationSettingsUI();
     markSettingsDirty(true);
     saveSettings({ silent: true }).catch((error) => {
       console.error('Failed to save account access strategy setting:', error);
@@ -14406,6 +14418,7 @@ selectAccountAccessStrategy?.addEventListener('change', async () => {
     selectPanelMode.value = previousExportTarget;
     selectAccountAccessStrategy.value = previousStrategyUiValue;
     updatePanelModeUI();
+    updatePhoneVerificationSettingsUI();
     showToast(`切换账号接入策略失败：${error.message}`, 'error');
   }
 });

@@ -5,8 +5,7 @@
    Themes: Light (default) + Dark (toggle)
    ============================================================ */
 
-#ip-proxy-section,
-#phone-verification-section {
+#ip-proxy-section {
   display: none !important;
 }
 
