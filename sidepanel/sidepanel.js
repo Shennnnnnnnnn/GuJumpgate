@@ -6723,7 +6723,11 @@ async function loadHeroSmsCountries() {
     });
     clearTimeout(timeoutId);
     const payload = await response.json();
-    const countries = Array.isArray(payload?.value) ? payload.value : (Array.isArray(payload) ? payload : []);
+    const countries = Array.isArray(payload?.value)
+      ? payload.value
+      : (Array.isArray(payload)
+        ? payload
+        : (payload && typeof payload === 'object' ? Object.values(payload) : []));
     if (!countries.length) {
       throw new Error('国家列表为空');
     }
