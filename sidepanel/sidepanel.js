@@ -15193,9 +15193,29 @@ inputAutoDelayMinutes.addEventListener('blur', () => {
 
 function getPhoneSmsCountrySelectionForProvider(provider = getSelectedPhoneSmsProvider(), options = {}) {
   const normalizedProvider = normalizePhoneSmsProvider(provider);
-  const countrySelect = selectHeroSmsCountry || selectHeroSmsCountryFallback;
   const selectionLimit = Math.max(1, Math.floor(Number(options.maxSelection) || HERO_SMS_COUNTRY_SELECTION_MAX));
   const ensureDefault = options.ensureDefault !== false;
+  if (normalizedProvider === PHONE_SMS_PROVIDER_FIVE_SIM) {
+    const selected = typeof getSelectedFiveSimCountries === 'function'
+      ? getSelectedFiveSimCountries()
+      : [];
+    if (selected.length || !ensureDefault) {
+      return selected.slice(0, selectionLimit);
+    }
+    return [{ id: DEFAULT_FIVE_SIM_COUNTRY_ID, code: DEFAULT_FIVE_SIM_COUNTRY_ID, label: DEFAULT_FIVE_SIM_COUNTRY_LABEL }];
+  }
+  if (normalizedProvider === PHONE_SMS_PROVIDER_NEXSMS) {
+    const selected = typeof getSelectedNexSmsCountries === 'function'
+      ? getSelectedNexSmsCountries()
+      : [];
+    if (selected.length || !ensureDefault) {
+      return selected.slice(0, selectionLimit);
+    }
+    const fallbackId = DEFAULT_NEX_SMS_COUNTRY_ORDER[0];
+    return [{ id: fallbackId, label: `Country #${fallbackId}` }];
+  }
+
+  const countrySelect = selectHeroSmsCountry || selectHeroSmsCountryFallback;
   const defaultCountry = normalizedProvider === PHONE_SMS_PROVIDER_FIVE_SIM
     ? { id: DEFAULT_FIVE_SIM_COUNTRY_ID, label: DEFAULT_FIVE_SIM_COUNTRY_LABEL }
     : { id: DEFAULT_HERO_SMS_COUNTRY_ID, label: DEFAULT_HERO_SMS_COUNTRY_LABEL };
@@ -15254,7 +15274,13 @@ async function switchPhoneSmsProvider(nextProvider) {
   const currentSelection = typeof getPhoneSmsCountrySelectionForProvider === 'function'
     ? getPhoneSmsCountrySelectionForProvider(previousProvider, { ensureDefault: true })
     : [];
-  const currentPrimary = currentSelection[0] || getSelectedHeroSmsCountryOption();
+  const currentPrimary = currentSelection[0] || (
+    previousProvider === PHONE_SMS_PROVIDER_FIVE_SIM
+      ? { id: DEFAULT_FIVE_SIM_COUNTRY_ID, code: DEFAULT_FIVE_SIM_COUNTRY_ID, label: DEFAULT_FIVE_SIM_COUNTRY_LABEL }
+      : (previousProvider === PHONE_SMS_PROVIDER_NEXSMS
+        ? { id: DEFAULT_NEX_SMS_COUNTRY_ORDER[0], label: `Country #${DEFAULT_NEX_SMS_COUNTRY_ORDER[0]}` }
+        : getSelectedHeroSmsCountryOption())
+  );
   const currentFallback = currentSelection.slice(1);
 
   const patch = {
@@ -15271,6 +15297,16 @@ async function switchPhoneSmsProvider(nextProvider) {
       .map((country) => normalizeFiveSimCountryId(country?.id, ''))
       .filter(Boolean);
     patch.fiveSimOperator = normalizeFiveSimOperator(inputFiveSimOperator?.value || latestState?.fiveSimOperator);
+  } else if (previousProvider === PHONE_SMS_PROVIDER_NEXSMS) {
+    patch.nexSmsApiKey = typeof inputNexSmsApiKey !== 'undefined' && inputNexSmsApiKey
+      ? String(inputNexSmsApiKey.value || '').trim()
+      : String(latestState?.nexSmsApiKey || '').trim();
+    patch.nexSmsCountryOrder = [currentPrimary, ...currentFallback]
+      .map((country) => normalizeNexSmsCountryIdValue(country?.id, -1))
+      .filter((countryId) => countryId >= 0);
+    patch.nexSmsServiceCode = typeof inputNexSmsServiceCode !== 'undefined' && inputNexSmsServiceCode
+      ? normalizeNexSmsServiceCodeValue(inputNexSmsServiceCode.value || latestState?.nexSmsServiceCode)
+      : normalizeNexSmsServiceCodeValue(latestState?.nexSmsServiceCode);
   } else {
     patch.heroSmsApiKey = currentApiKey;
     patch.heroSmsMaxPrice = currentMaxPrice;
@@ -15305,20 +15341,36 @@ async function switchPhoneSmsProvider(nextProvider) {
   if (displayPhoneSmsBalance) displayPhoneSmsBalance.textContent = '余额未获取';
   if (rowHeroSmsPriceTiers) rowHeroSmsPriceTiers.style.display = 'none';
 
-  await loadHeroSmsCountries();
-  const restoredPrimary = normalizedNextProvider === PHONE_SMS_PROVIDER_FIVE_SIM
-    ? {
+  if (normalizedNextProvider === PHONE_SMS_PROVIDER_FIVE_SIM) {
+    await loadFiveSimCountries().catch(() => { });
+    const restoredPrimary = {
       id: normalizeFiveSimCountryId(latestState?.fiveSimCountryId),
       label: normalizeFiveSimCountryLabel(latestState?.fiveSimCountryLabel),
-    }
-    : {
+    };
+    const restoredFallback = normalizeFiveSimCountryFallbackList(latestState?.fiveSimCountryFallback || []);
+    applyFiveSimCountrySelection(
+      Array.isArray(latestState?.fiveSimCountryOrder) && latestState.fiveSimCountryOrder.length
+        ? latestState.fiveSimCountryOrder
+        : [restoredPrimary, ...restoredFallback],
+      { ensureDefault: true }
+    );
+  } else if (normalizedNextProvider === PHONE_SMS_PROVIDER_NEXSMS) {
+    await loadNexSmsCountries().catch(() => { });
+    applyNexSmsCountrySelection(
+      Array.isArray(latestState?.nexSmsCountryOrder) && latestState.nexSmsCountryOrder.length
+        ? latestState.nexSmsCountryOrder
+        : [],
+      { ensureDefault: true }
+    );
+  } else {
+    await loadHeroSmsCountries().catch(() => { });
+    const restoredPrimary = {
       id: normalizeHeroSmsCountryId(latestState?.heroSmsCountryId),
       label: normalizeHeroSmsCountryLabel(latestState?.heroSmsCountryLabel),
     };
-  const restoredFallback = normalizedNextProvider === PHONE_SMS_PROVIDER_FIVE_SIM
-    ? normalizeFiveSimCountryFallbackList(latestState?.fiveSimCountryFallback || [])
-    : normalizeHeroSmsCountryFallbackList(latestState?.heroSmsCountryFallback || []);
-  applyHeroSmsFallbackSelection([restoredPrimary, ...restoredFallback], { includePrimary: true });
+    const restoredFallback = normalizeHeroSmsCountryFallbackList(latestState?.heroSmsCountryFallback || []);
+    applyHeroSmsFallbackSelection([restoredPrimary, ...restoredFallback], { includePrimary: true });
+  }
   updatePhoneVerificationSettingsUI();
   markSettingsDirty(true);
   saveSettings({ silent: true }).catch(() => {});

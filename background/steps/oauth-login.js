@@ -223,6 +223,33 @@
       return visibleStep > 0 ? visibleStep : 7;
     }
 
+    function normalizeStep7PanelMode(value = '') {
+      return String(value || '').trim().toLowerCase();
+    }
+
+    function preserveStep7OAuthRoutingState(latestState = {}, incomingState = {}) {
+      const mergedState = {
+        ...(latestState || {}),
+        ...(incomingState || {}),
+      };
+      const incomingPanelMode = normalizeStep7PanelMode(incomingState?.panelMode);
+      const latestPanelMode = normalizeStep7PanelMode(latestState?.panelMode);
+      const hasCockpitToolsOAuthSession = Boolean(
+        incomingState?.cockpitToolsOAuthState
+        || incomingState?.cockpitToolsPkceCodes
+        || latestState?.cockpitToolsOAuthState
+        || latestState?.cockpitToolsPkceCodes
+      );
+      if (
+        incomingPanelMode === 'cockpit-tools'
+        || latestPanelMode === 'cockpit-tools'
+        || hasCockpitToolsOAuthSession
+      ) {
+        mergedState.panelMode = 'cockpit-tools';
+      }
+      return mergedState;
+    }
+
     async function completeStep7PostLoginPhoneHandoff(state = {}, err, completionStep) {
       if (normalizeStep7SignupMethod(state?.resolvedSignupMethod || state?.signupMethod) === 'phone') {
         throw new Error(
@@ -239,10 +266,7 @@
 
     async function executeStep7(state) {
       const initialState = typeof getState === 'function'
-        ? {
-          ...(state || {}),
-          ...(await getState().catch(() => ({}))),
-        }
+        ? preserveStep7OAuthRoutingState(await getState().catch(() => ({})), state || {})
         : (state || {});
       const visibleStep = Math.floor(Number(initialState?.visibleStep) || 0);
       const completionStep = visibleStep > 0 ? visibleStep : 7;
@@ -278,7 +302,9 @@
         throwIfStopped();
         attempt += 1;
         try {
-          const rawCurrentState = attempt === 1 ? initialState : await getState();
+          const rawCurrentState = attempt === 1
+            ? initialState
+            : preserveStep7OAuthRoutingState(await getState(), state || initialState);
           const currentState = shouldForceStep7EmailLogin(state)
             ? {
               ...rawCurrentState,

@@ -4,6 +4,8 @@ const fs = require('node:fs');
 
 const panelBridgeSource = fs.readFileSync('background/panel-bridge.js', 'utf8');
 const platformVerifySource = fs.readFileSync('background/steps/platform-verify.js', 'utf8');
+const navigationUtilsSource = fs.readFileSync('background/navigation-utils.js', 'utf8');
+const oauthLoginSource = fs.readFileSync('background/steps/oauth-login.js', 'utf8');
 
 function loadPanelBridgeApi() {
   const scope = {};
@@ -14,6 +16,24 @@ function loadPlatformVerifyApi() {
   const scope = {};
   return new Function('self', `${platformVerifySource}; return self.MultiPageBackgroundStep10;`)(scope);
 }
+
+function loadNavigationUtilsApi() {
+  const scope = {};
+  return new Function('self', `${navigationUtilsSource}; return self.MultiPageBackgroundNavigationUtils;`)(scope);
+}
+
+function loadOAuthLoginApi() {
+  const scope = {};
+  return new Function('self', `${oauthLoginSource}; return self.MultiPageBackgroundStep7;`)(scope);
+}
+
+test('navigation utils recognize cockpit-tools panel mode', () => {
+  const api = loadNavigationUtilsApi();
+  const navigation = api.createNavigationUtils({});
+
+  assert.equal(navigation.getPanelMode({ panelMode: 'cockpit-tools' }), 'cockpit-tools');
+  assert.equal(navigation.getPanelModeLabel({ panelMode: 'cockpit-tools' }), 'cockpit-tools');
+});
 
 test('cockpit-tools OAuth mode generates a local PKCE authorization request', async () => {
   const api = loadPanelBridgeApi();
@@ -40,6 +60,47 @@ test('cockpit-tools OAuth mode generates a local PKCE authorization request', as
     codeVerifier: 'verifier',
     codeChallenge: 'challenge',
   });
+});
+
+test('Step 7 keeps incoming cockpit-tools OAuth routing when stored state is CPA', async () => {
+  const api = loadOAuthLoginApi();
+  const refreshStates = [];
+  const completed = [];
+  const executor = api.createStep7Executor({
+    addLog: async () => {},
+    completeNodeFromBackground: async (nodeId, payload) => completed.push({ nodeId, payload }),
+    getErrorMessage: (error) => String(error?.message || error || ''),
+    getLoginAuthStateLabel: () => 'unknown',
+    getState: async () => ({
+      panelMode: 'cpa',
+      email: 'stored@example.com',
+      password: 'password',
+    }),
+    isStep6RecoverableResult: () => false,
+    isStep6SuccessResult: (result) => result?.step6Outcome === 'success',
+    refreshOAuthUrlBeforeStep6: async (state) => {
+      refreshStates.push({ ...state });
+      return 'https://auth.openai.com/oauth/authorize?state=cockpit-state';
+    },
+    reuseOrCreateTab: async () => {},
+    sendToContentScriptResilient: async () => ({ step6Outcome: 'success', state: 'verification_page' }),
+    startOAuthFlowTimeoutWindow: async () => {},
+    STEP6_MAX_ATTEMPTS: 1,
+    throwIfStopped: () => {},
+  });
+
+  await executor.executeStep7({
+    nodeId: 'oauth-login',
+    panelMode: 'cockpit-tools',
+    plusAccountAccessStrategy: 'oauth',
+    email: 'incoming@example.com',
+    password: 'password',
+    visibleStep: 8,
+  });
+
+  assert.equal(refreshStates[0].panelMode, 'cockpit-tools');
+  assert.equal(refreshStates[0].email, 'incoming@example.com');
+  assert.equal(completed[0].nodeId, 'oauth-login');
 });
 
 test('cockpit-tools OAuth platform verify exchanges the callback and imports tokens', async () => {

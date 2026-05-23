@@ -809,7 +809,10 @@
     }
 
     async function resolveHeroSmsPricePlanFromPricePayloads(config, countryConfig, state = {}, payloads = []) {
-      const userLimit = normalizeHeroSmsPriceLimit(state.heroSmsMaxPrice);
+      const priceRange = resolvePhonePriceRange(state, PHONE_SMS_PROVIDER_HERO);
+      const userMinLimit = priceRange.minPriceLimit;
+      const userLimit = priceRange.maxPriceLimit;
+      const hasPriceBounds = priceRange.hasMinPriceLimit || priceRange.hasMaxPriceLimit;
       const inStockCandidates = buildSortedUniquePriceCandidates(
         (Array.isArray(payloads) ? payloads : [])
           .flatMap((payload) => collectHeroSmsPriceCandidates(payload, []))
@@ -828,23 +831,53 @@
         ? allCatalogCandidates[0]
         : (mergedCandidates.length ? mergedCandidates[0] : null);
 
-      if (userLimit !== null) {
-        const bounded = mergedCandidates.filter((price) => price <= userLimit);
+      if (hasPriceBounds) {
+        const bounded = filterPriceCandidatesWithinRange(mergedCandidates, userMinLimit, userLimit);
         if (bounded.length > 0) {
           const boundedPlan = {
             prices: bounded,
             userLimit,
+            userMinLimit,
             minCatalogPrice,
             syntheticUserLimitProbe: false,
+            hasPriceBounds,
           };
           await persistHeroSmsPricePlanSnapshot(countryConfig, boundedPlan);
           return boundedPlan;
         }
+        if (userLimit !== null && (userMinLimit === null || userLimit >= userMinLimit)) {
+          const userLimitedPlan = {
+            prices: [userLimit],
+            userLimit,
+            userMinLimit,
+            minCatalogPrice,
+            syntheticUserLimitProbe: true,
+            hasPriceBounds,
+          };
+          await persistHeroSmsPricePlanSnapshot(countryConfig, userLimitedPlan);
+          return userLimitedPlan;
+        }
+        const emptyBoundedPlan = {
+          prices: [],
+          userLimit,
+          userMinLimit,
+          minCatalogPrice,
+          syntheticUserLimitProbe: false,
+          hasPriceBounds,
+          noAvailableWithinRange: true,
+        };
+        await persistHeroSmsPricePlanSnapshot(countryConfig, emptyBoundedPlan);
+        return emptyBoundedPlan;
+      }
+
+      if (userLimit !== null) {
         const userLimitedPlan = {
           prices: [userLimit],
           userLimit,
+          userMinLimit,
           minCatalogPrice,
           syntheticUserLimitProbe: true,
+          hasPriceBounds,
         };
         await persistHeroSmsPricePlanSnapshot(countryConfig, userLimitedPlan);
         return userLimitedPlan;
@@ -854,8 +887,10 @@
         const plan = {
           prices: mergedCandidates,
           userLimit: null,
+          userMinLimit: null,
           minCatalogPrice,
           syntheticUserLimitProbe: false,
+          hasPriceBounds: false,
         };
         await persistHeroSmsPricePlanSnapshot(countryConfig, plan);
         return plan;
@@ -863,8 +898,10 @@
       const fallbackPlan = {
         prices: [null],
         userLimit: null,
+        userMinLimit: null,
         minCatalogPrice: null,
         syntheticUserLimitProbe: false,
+        hasPriceBounds: false,
       };
       await persistHeroSmsPricePlanSnapshot(countryConfig, fallbackPlan);
       return fallbackPlan;
@@ -2472,10 +2509,15 @@
           );
           if (
             Array.isArray(plan?.prices)
-            && plan.prices.length > 0
             && (
-              plan.prices.some((price) => Number.isFinite(Number(price)) && Number(price) > 0)
-              || plan.syntheticUserLimitProbe
+              (
+                plan.prices.length > 0
+                && (
+                  plan.prices.some((price) => Number.isFinite(Number(price)) && Number(price) > 0)
+                  || plan.syntheticUserLimitProbe
+                )
+              )
+              || plan.noAvailableWithinRange
             )
           ) {
             return plan;
@@ -2486,11 +2528,23 @@
       }
 
       const fallbackPlan = {
-        prices: [null],
-        userLimit: null,
+        prices: [],
+        userLimit: normalizeHeroSmsPriceLimit(state.heroSmsMaxPrice),
+        userMinLimit: normalizeHeroSmsPriceLimit(state.heroSmsMinPrice),
         minCatalogPrice: null,
         syntheticUserLimitProbe: false,
+        hasPriceBounds: Boolean(
+          normalizeHeroSmsPriceLimit(state.heroSmsMaxPrice) !== null
+          || normalizeHeroSmsPriceLimit(state.heroSmsMinPrice) !== null
+        ),
+        noAvailableWithinRange: Boolean(
+          normalizeHeroSmsPriceLimit(state.heroSmsMaxPrice) !== null
+          || normalizeHeroSmsPriceLimit(state.heroSmsMinPrice) !== null
+        ),
       };
+      if (!fallbackPlan.hasPriceBounds) {
+        fallbackPlan.prices = [null];
+      }
       await persistHeroSmsPricePlanSnapshot(countryConfig, fallbackPlan);
       return fallbackPlan;
     }
@@ -2516,6 +2570,7 @@
       let retriedWithoutPrice = false;
       const userLimit = normalizeHeroSmsPriceLimit(options.userLimit);
       const userMinLimit = normalizeHeroSmsPriceLimit(options.userMinLimit);
+      const hasUserPriceBounds = userLimit !== null || userMinLimit !== null;
 
       while (true) {
         try {
@@ -2550,6 +2605,7 @@
             nextMaxPrice !== null
             && nextMaxPrice !== undefined
             && !retriedWithoutPrice
+            && !hasUserPriceBounds
             && isNetworkFetchFailure(error)
           ) {
             nextMaxPrice = null;

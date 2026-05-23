@@ -8470,6 +8470,9 @@ function getPanelMode(state = {}) {
   if (state.panelMode === 'codex2api') {
     return 'codex2api';
   }
+  if (state.panelMode === 'cockpit-tools') {
+    return 'cockpit-tools';
+  }
   return 'cpa';
 }
 
@@ -8489,6 +8492,9 @@ function getPanelModeLabel(modeOrState) {
   }
   if (mode === 'codex2api') {
     return 'Codex2API';
+  }
+  if (mode === 'cockpit-tools') {
+    return 'cockpit-tools';
   }
   return 'CPA';
 }
@@ -14415,7 +14421,7 @@ async function refreshOAuthUrlBeforeStep6(state, options = {}) {
     await handleStepData(1, { oauthUrl });
     return oauthUrl;
   }
-  await addLog(`contributionMode=false，走普通 CPA / SUB2API / Codex2API 链路（当前面板：${getPanelModeLabel(state)}），正在刷新 OAuth 登录地址...`, 'info', {
+  await addLog(`contributionMode=false，走普通 CPA / SUB2API / Codex2API / cockpit-tools 链路（当前面板：${getPanelModeLabel(state)}），正在刷新 OAuth 登录地址...`, 'info', {
     step: visibleStep,
     stepKey: 'oauth-login',
   });
