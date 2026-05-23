@@ -15,10 +15,12 @@
       chrome,
       completeNodeFromBackground,
       fetch: fetchApi = typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : null,
+      getState = null,
       getTabId,
       isTabAlive,
       buildLocalHelperEndpoint = null,
       registerTab,
+      refreshSessionByUsedOutlookEmail = null,
       setState = async () => {},
       sleepWithStop = async () => {},
       throwIfStopped = () => {},
@@ -113,6 +115,69 @@
       ).toLowerCase();
     }
 
+    function normalizeEmail(value = '') {
+      return normalizeString(value).toLowerCase();
+    }
+
+    function isUsableUsedOutlookAccount(account = {}) {
+      const status = normalizeString(account?.status).toLowerCase();
+      return Boolean(account)
+        && Boolean(normalizeEmail(account?.email))
+        && Boolean(account?.refreshToken)
+        && (Boolean(account?.used) || Number(account?.lastUsedAt) > 0)
+        && status !== 'error'
+        && status !== 'deleted'
+        && status !== 'disabled';
+    }
+
+    function normalizeHotmailAccounts(accounts = []) {
+      return (Array.isArray(accounts) ? accounts : [])
+        .filter((account) => account && typeof account === 'object');
+    }
+
+    function getHotmailAliasEmailsForAccount(state = {}, account = {}) {
+      const accountKeys = [
+        normalizeString(account?.id),
+        normalizeEmail(account?.email),
+      ].filter(Boolean);
+      const usage = state?.hotmailAliasUsage && typeof state.hotmailAliasUsage === 'object' && !Array.isArray(state.hotmailAliasUsage)
+        ? state.hotmailAliasUsage
+        : {};
+      const aliases = [];
+      for (const key of accountKeys) {
+        const bucket = usage[key];
+        const source = bucket?.aliases && typeof bucket.aliases === 'object' && !Array.isArray(bucket.aliases)
+          ? bucket.aliases
+          : bucket;
+        for (const entry of Object.values(source || {})) {
+          const email = normalizeEmail(entry?.email);
+          if (email && Boolean(entry?.used)) {
+            aliases.push(email);
+          }
+        }
+      }
+      return aliases;
+    }
+
+    function findUsedOutlookAccountForRegisteredEmail(state = {}, registeredEmail = '') {
+      const email = normalizeEmail(registeredEmail);
+      if (!email) {
+        return null;
+      }
+      for (const account of normalizeHotmailAccounts(state?.hotmailAccounts)) {
+        if (!isUsableUsedOutlookAccount(account)) {
+          continue;
+        }
+        if (normalizeEmail(account.email) === email) {
+          return account;
+        }
+        if (getHotmailAliasEmailsForAccount(state, account).includes(email)) {
+          return account;
+        }
+      }
+      return null;
+    }
+
     function getSessionAccountId(sessionState = {}) {
       return normalizeString(
         sessionState?.session?.account?.id
@@ -130,6 +195,11 @@
         session?.account?.state,
       ].map((value) => normalizeString(value).toLowerCase()).filter(Boolean).join(' ');
       return /account.*(?:deleted|disabled|deactivated|suspended)|(?:deleted|disabled|deactivated|suspended).*account|账户.*(?:停用|删除|已删)|账号.*(?:停用|删除|已删)/i.test(combined);
+    }
+
+    function isOpenAiAccountUnavailableError(error) {
+      const message = normalizeString(error?.message || error).toLowerCase();
+      return /account.*(?:deleted|disabled|deactivated|suspended)|(?:deleted|disabled|deactivated|suspended).*account|账户.*(?:停用|删除|已删)|账号.*(?:停用|删除|已删)/i.test(message);
     }
 
     async function fetchFirstJsonEndpoint(endpoints = [], requestOptions = {}) {
@@ -217,7 +287,7 @@
     async function syncCockpitToolsReauthStateBeforeImport(state = {}, sessionState = {}, visibleStep) {
       const email = getSessionEmail(sessionState);
       if (!email) {
-        return;
+        return { needsReauth: false };
       }
       try {
         const accounts = await listCockpitToolsCodexAccounts();
@@ -225,10 +295,42 @@
         if (account && cockpitAccountNeedsReauth(account)) {
           await addStepLog(visibleStep, `检测到 cockpit-tools 中 ${email} 的 OAuth/session 已失效，将删除旧账号后导入最新 Session。`, 'warn');
           await deleteCockpitToolsCodexAccountByEmail(email);
+          return { needsReauth: true, account };
         }
       } catch (error) {
         await addStepLog(visibleStep, `检查 cockpit-tools 已有账号状态失败，将继续尝试导入最新 Session：${error?.message || error}`, 'warn');
       }
+      return { needsReauth: false };
+    }
+
+    async function refreshSessionIfNeededWithUsedOutlookEmail(sessionState = {}, state = {}, visibleStep = 8, options = {}) {
+      const force = Boolean(options?.force);
+      if (!force && !isSessionAccessTokenExpired(sessionState)) {
+        return sessionState;
+      }
+      if (typeof refreshSessionByUsedOutlookEmail !== 'function') {
+        return sessionState;
+      }
+      const email = getSessionEmail(sessionState) || normalizeEmail(state?.email || state?.registrationEmailState?.current);
+      if (!email) {
+        return sessionState;
+      }
+      const latestState = typeof getState === 'function'
+        ? await getState().catch(() => state)
+        : state;
+      const outlookAccount = findUsedOutlookAccountForRegisteredEmail(latestState, email);
+      if (!outlookAccount) {
+        await addStepLog(visibleStep, `未找到 ${email} 对应的本地已用 Outlook/Hotmail 账号，无法自动验证码登录刷新 Session。`, 'warn');
+        return sessionState;
+      }
+      await addStepLog(visibleStep, `将使用本地已用 Outlook/Hotmail 账号 ${outlookAccount.email} 验证码登录 ${email} 并刷新 Session。`, 'info');
+      const refreshed = await refreshSessionByUsedOutlookEmail({
+        email,
+        outlookAccount,
+        state: latestState,
+        visibleStep,
+      });
+      return refreshed?.session || refreshed?.accessToken ? refreshed : sessionState;
     }
 
     function isSupportedChatGptSessionUrl(url = '') {
@@ -693,6 +795,32 @@
         });
         return;
       }
+      const reauthState = await syncCockpitToolsReauthStateBeforeImport(state, sessionState, visibleStep);
+      const shouldRefreshWithOutlook = Boolean(reauthState?.needsReauth) || isSessionAccessTokenExpired(sessionState);
+      if (shouldRefreshWithOutlook) {
+        try {
+          sessionState = await refreshSessionIfNeededWithUsedOutlookEmail(sessionState, state, visibleStep, {
+            force: Boolean(reauthState?.needsReauth),
+          });
+        } catch (error) {
+          if (!isOpenAiAccountUnavailableError(error)) {
+            throw error;
+          }
+          const email = getSessionEmail(sessionState);
+          if (email) {
+            await addStepLog(visibleStep, `验证码登录提示 ${email} 账户已停用或删除，删除 cockpit-tools 侧账号并跳过 Session 刷新。`, 'warn');
+            await deleteCockpitToolsCodexAccountByEmail(email).catch((deleteError) => addStepLog(visibleStep, `删除 cockpit-tools 账号失败：${deleteError?.message || deleteError}`, 'warn'));
+            await updateLocalSessionRecord(state, 'delete', { email });
+          }
+          await completeNodeFromBackground(state?.nodeId || 'cockpit-tools-session-import', {
+            imported: false,
+            skipped: true,
+            reason: 'account_unavailable',
+            destination: 'cockpit-tools',
+          });
+          return;
+        }
+      }
       if (isSessionAccessTokenExpired(sessionState)) {
         await addStepLog(visibleStep, '当前 Session accessToken 已过期或即将过期，将用当前登录态刷新 Session JSON 后再导入。', 'warn');
         const tabId = await getOrOpenSessionJsonTab(state, visibleStep);
@@ -700,7 +828,6 @@
         sessionState = await waitForPlusChatGptSession(tabId, visibleStep, 'cockpit-tools-session-import', state);
         cachedPlusSessionState = sessionState;
       }
-      await syncCockpitToolsReauthStateBeforeImport(state, sessionState, visibleStep);
       await addStepLog(visibleStep, '已读取 Plus Session JSON，正在提交到 cockpit-tools...', 'info');
       const result = await importSessionToCockpitTools(state, sessionState, visibleStep);
       await updateLocalSessionRecord(state, 'upsert', buildLocalSessionRecord(sessionState, result));
@@ -711,6 +838,9 @@
     return {
       executeCockpitToolsSessionReady,
       executeCockpitToolsSessionImport,
+      findUsedOutlookAccountForRegisteredEmail,
+      refreshSessionIfNeededWithUsedOutlookEmail,
+      isOpenAiAccountUnavailableError,
       isSupportedChatGptSessionUrl,
       isSessionAccessTokenExpired,
       buildCockpitToolsImportEndpoints,

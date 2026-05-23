@@ -13592,6 +13592,79 @@ const step8Executor = self.MultiPageBackgroundStep8?.createStep8Executor({
   STEP7_MAIL_POLLING_RECOVERY_MAX_ATTEMPTS,
   throwIfStopped,
 });
+
+async function refreshCockpitToolsSessionByUsedOutlookEmail(options = {}) {
+  const email = String(options?.email || '').trim();
+  const outlookAccount = options?.outlookAccount || null;
+  const visibleStep = Math.floor(Number(options?.visibleStep) || 0) || 8;
+  if (!email) {
+    throw new Error('缺少需要刷新 Session 的注册邮箱。');
+  }
+  if (!outlookAccount?.id) {
+    throw new Error(`未找到 ${email} 对应的本地已用 Outlook/Hotmail 账号。`);
+  }
+
+  await addLog(`步骤 ${visibleStep}：正在检查 Outlook/Hotmail 账号 ${outlookAccount.email || outlookAccount.id} 是否可收取登录验证码...`, 'info', {
+    step: visibleStep,
+    stepKey: 'cockpit-tools-session-import',
+  });
+  await verifyHotmailAccount(outlookAccount.id);
+
+  const baseState = {
+    ...(options?.state || {}),
+    ...(await getState()),
+    mailProvider: HOTMAIL_PROVIDER,
+    currentHotmailAccountId: outlookAccount.id,
+    forceLoginIdentifierType: 'email',
+    forceEmailLogin: true,
+    signupMethod: 'email',
+    resolvedSignupMethod: 'email',
+    accountIdentifierType: 'email',
+    accountIdentifier: email,
+    email,
+    step8VerificationTargetEmail: email,
+    visibleStep,
+  };
+
+  await setState({
+    mailProvider: HOTMAIL_PROVIDER,
+    currentHotmailAccountId: outlookAccount.id,
+    forceLoginIdentifierType: 'email',
+    forceEmailLogin: true,
+    signupMethod: 'email',
+    resolvedSignupMethod: 'email',
+    accountIdentifierType: 'email',
+    accountIdentifier: email,
+    email,
+    step8VerificationTargetEmail: email,
+  });
+
+  await addLog(`步骤 ${visibleStep}：Outlook/Hotmail 账号正常，正在验证码登录 ${email} 以刷新 ChatGPT Session...`, 'info', {
+    step: visibleStep,
+    stepKey: 'cockpit-tools-session-import',
+  });
+  await step7Executor.executeStep7({
+    ...baseState,
+    nodeId: 'oauth-login',
+  });
+
+  const afterLoginState = {
+    ...baseState,
+    ...(await getState()),
+    visibleStep,
+    nodeId: 'fetch-login-code',
+  };
+  if (!afterLoginState.skipLoginVerificationStep && !afterLoginState.directOAuthConsentPage) {
+    await step8Executor.executeStep8(afterLoginState);
+  }
+
+  await addLog(`步骤 ${visibleStep}：${email} 已完成验证码登录，准备重新读取最新 ChatGPT Session。`, 'ok', {
+    step: visibleStep,
+    stepKey: 'cockpit-tools-session-import',
+  });
+  return null;
+}
+
 const plusCheckoutCreateExecutor = self.MultiPageBackgroundPlusCheckoutCreate?.createPlusCheckoutCreateExecutor({
   addLog,
   broadcastDataUpdate,
@@ -13723,9 +13796,12 @@ const cockpitToolsSessionImportExecutor = self.MultiPageBackgroundCockpitToolsSe
   chrome,
   completeNodeFromBackground,
   ensureContentScriptReadyOnTabUntilStopped,
+  getState,
   getTabId,
   isTabAlive,
   registerTab,
+  refreshSessionByUsedOutlookEmail: refreshCockpitToolsSessionByUsedOutlookEmail,
+  setState,
   sendTabMessageUntilStopped,
   sleepWithStop,
   throwIfStopped,
