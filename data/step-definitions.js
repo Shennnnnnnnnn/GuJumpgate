@@ -39,6 +39,15 @@
     { id: 9, order: 90, key: 'plus-checkout-return', title: '订阅回跳确认', sourceId: 'plus-checkout', driverId: 'content/plus-checkout', command: 'plus-checkout-return' },
   ];
   const PLUS_PAYPAL_HOSTED_CHECKOUT_PREFIX_STEP_DEFINITIONS = PLUS_PAYPAL_PREFIX_STEP_DEFINITIONS.slice(0, 6);
+  const PLUS_PAYPAL_HOSTED_CHECKOUT_AFTER_REGISTRATION_PREFIX_STEP_DEFINITIONS = [
+    ...PLUS_PAYPAL_PREFIX_STEP_DEFINITIONS.slice(0, 5),
+    { id: 6, order: 60, key: 'wait-registration-success', title: '等待注册成功', sourceId: 'chatgpt', driverId: null, command: 'wait-registration-success' },
+    {
+      ...PLUS_PAYPAL_PREFIX_STEP_DEFINITIONS[5],
+      id: 7,
+      order: 70,
+    },
+  ];
   const LOCAL_CPA_JSON_NO_RT_EXPORT_STEP_DEFINITION = {
     id: 7,
     order: 70,
@@ -421,6 +430,7 @@
     }
     const paymentMethod = normalizePlusPaymentMethod(options?.plusPaymentMethod || options?.paymentMethod);
     const plusAccountAccessStrategy = normalizePlusAccountAccessStrategy(options?.plusAccountAccessStrategy);
+    const isCockpitToolsPanel = panelMode === 'cockpit-tools';
     if (paymentMethod === PLUS_PAYMENT_METHOD_GPC_HELPER) {
       if (signupMethod === SIGNUP_METHOD_PHONE) {
         return reloginAfterBindEmail
@@ -460,6 +470,15 @@
       plusModeEnabled: true,
       plusPaymentMethod: paymentMethod,
     })) {
+      if (isCockpitToolsPanel && signupMethod === SIGNUP_METHOD_PHONE) {
+        return createHostedCheckoutSteps(
+          PLUS_PAYPAL_HOSTED_CHECKOUT_AFTER_REGISTRATION_PREFIX_STEP_DEFINITIONS,
+          8,
+          80,
+          SIGNUP_METHOD_PHONE,
+          options
+        );
+      }
       if (signupMethod === SIGNUP_METHOD_PHONE) {
         return reloginAfterBindEmail
           ? PLUS_PAYPAL_HOSTED_CHECKOUT_PHONE_BOUND_EMAIL_RELOGIN_STEP_DEFINITIONS
@@ -524,6 +543,7 @@
           ...NORMAL_PHONE_STEP_DEFINITIONS,
           ...NORMAL_PHONE_BOUND_EMAIL_RELOGIN_STEP_DEFINITIONS,
           ...PLUS_PAYPAL_HOSTED_CHECKOUT_STEP_DEFINITIONS,
+          ...PLUS_PAYPAL_HOSTED_CHECKOUT_AFTER_REGISTRATION_PREFIX_STEP_DEFINITIONS,
           ...PLUS_PAYPAL_HOSTED_CHECKOUT_SUB2API_SESSION_STEP_DEFINITIONS,
           ...PLUS_PAYPAL_HOSTED_CHECKOUT_CPA_SESSION_STEP_DEFINITIONS,
           ...PLUS_PAYPAL_HOSTED_CHECKOUT_COCKPIT_TOOLS_SESSION_STEP_DEFINITIONS,

@@ -87,6 +87,7 @@
       supportsPhoneSignup: true,
       requiresPhoneSignupWarning: false,
       supportedPlusAccountAccessStrategies: Object.freeze([
+        PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH,
         PLUS_ACCOUNT_ACCESS_STRATEGY_COCKPIT_TOOLS_SESSION,
       ]),
     }),
@@ -261,6 +262,8 @@
         plusModeEnabled: flowState.supportsPlusMode && Boolean(state?.plusModeEnabled),
         settingsMenuLocked: Boolean(options?.settingsMenuLocked ?? state?.settingsMenuLocked),
       };
+      const allowsPhoneSignupDuringPlusMode = activeFlowId === 'openai'
+        && effectivePanelMode === 'cockpit-tools';
       const effectiveSignupMethods = [];
       if (flowState.supportsEmailSignup !== false) {
         effectiveSignupMethods.push(SIGNUP_METHOD_EMAIL);
@@ -268,7 +271,7 @@
       const canSelectPhoneSignup = Boolean(flowState.supportsPhoneSignup)
         && Boolean(panelState.supportsPhoneSignup)
         && runtimeLocks.phoneVerificationEnabled
-        && !runtimeLocks.plusModeEnabled
+        && (!runtimeLocks.plusModeEnabled || allowsPhoneSignupDuringPlusMode)
         && !runtimeLocks.contributionMode;
       if (canSelectPhoneSignup) {
         effectiveSignupMethods.push(SIGNUP_METHOD_PHONE);
@@ -317,6 +320,7 @@
         canShowPlusSettings: Boolean(flowState.supportsPlusMode),
         canSwitchFlow: Boolean(flowState.canSwitchFlow),
         canEditPlusAccountAccessStrategy,
+        canSelectPhoneSignup,
         canUsePhoneSignup: canSelectPhoneSignup,
         canUseSelectedPanelMode: panelModeSupported,
         effectivePlusAccountAccessStrategy,
@@ -370,7 +374,7 @@
       if (runtimeLocks.plusModeEnabled) {
         return {
           code: 'phone_signup_plus_mode_locked',
-          message: 'Plus 模式开启时不能使用手机号注册。',
+          message: '当前面板模式在 Plus 模式下不能使用手机号注册。',
         };
       }
       if (runtimeLocks.contributionMode) {

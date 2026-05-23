@@ -10,6 +10,7 @@
       completeNodeFromBackground,
       createLocalCliProxyApi = null,
       ensureContentScriptReadyOnTab,
+      fetch: fetchApi = typeof fetch === 'function' ? fetch.bind(globalThis) : null,
       getPanelMode,
       getTabId,
       isLocalhostOAuthCallbackUrl,
@@ -28,6 +29,8 @@
 
     let sub2ApiApi = null;
     let localCliProxyApi = null;
+    const COCKPIT_TOOLS_BRIDGE_PORT_START = 19528;
+    const COCKPIT_TOOLS_BRIDGE_PORT_ATTEMPTS = 100;
 
     function getSub2ApiApi() {
       if (sub2ApiApi) {
@@ -145,6 +148,9 @@
     }
 
     async function fetchCpaManagementJson(origin, path, options = {}) {
+      if (typeof fetchApi !== 'function') {
+        throw new Error('当前运行环境不支持 fetch，无法提交平台回调。');
+      }
       const controller = new AbortController();
       const timeoutMs = Math.max(1000, Math.floor(Number(options.timeoutMs) || 20000));
       const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -160,7 +166,7 @@
           headers['X-Management-Key'] = managementKey;
         }
 
-        const response = await fetch(`${origin}${path}`, {
+        const response = await fetchApi(`${origin}${path}`, {
           method: options.method || 'POST',
           headers,
           body: options.body === undefined ? undefined : JSON.stringify(options.body),
@@ -210,12 +216,15 @@
     }
 
     async function fetchCodex2ApiJson(origin, path, options = {}) {
+      if (typeof fetchApi !== 'function') {
+        throw new Error('当前运行环境不支持 fetch，无法提交平台回调。');
+      }
       const controller = new AbortController();
       const timeoutMs = Math.max(1000, Math.floor(Number(options.timeoutMs) || 30000));
       const timer = setTimeout(() => controller.abort(), timeoutMs);
 
       try {
-        const response = await fetch(`${origin}${path}`, {
+        const response = await fetchApi(`${origin}${path}`, {
           method: options.method || 'POST',
           headers: {
             Accept: 'application/json',
@@ -249,10 +258,13 @@
     }
 
     async function saveLocalCpaJsonArtifactViaHelper(helperBaseUrl, artifact) {
+      if (typeof fetchApi !== 'function') {
+        throw new Error('当前运行环境不支持 fetch，无法保存本地认证文件。');
+      }
       const endpoint = typeof buildLocalHelperEndpoint === 'function'
         ? buildLocalHelperEndpoint(helperBaseUrl, '/save-auth-json')
         : new URL('/save-auth-json', `${helperBaseUrl.replace(/\/+$/, '')}/`).toString();
-      const response = await fetch(endpoint, {
+      const response = await fetchApi(endpoint, {
         method: 'POST',
         headers: {
           Accept: 'application/json',
@@ -283,6 +295,9 @@
     }
 
     async function executeStep10(state) {
+      if (getPanelMode(state) === 'cockpit-tools') {
+        return executeCockpitToolsStep10(state);
+      }
       if (getPanelMode(state) === 'local-cpa-json') {
         return executeLocalCpaJsonStep10(state);
       }
@@ -293,6 +308,100 @@
         return executeSub2ApiStep10(state);
       }
       return executeCpaStep10(state);
+    }
+
+    function buildCockpitToolsImportEndpoints() {
+      return Array.from({ length: COCKPIT_TOOLS_BRIDGE_PORT_ATTEMPTS }, (_item, index) => (
+        `http://127.0.0.1:${COCKPIT_TOOLS_BRIDGE_PORT_START + index}/v1/codex/accounts/import`
+      ));
+    }
+
+    function buildCockpitToolsTokenImportPayload(tokenBundle = {}) {
+      return {
+        type: 'codex',
+        tokens: {
+          access_token: normalizeString(tokenBundle.accessToken || tokenBundle.access_token),
+          refresh_token: normalizeString(tokenBundle.refreshToken || tokenBundle.refresh_token),
+          id_token: normalizeString(tokenBundle.idToken || tokenBundle.id_token),
+        },
+        expires_at: normalizeString(tokenBundle.expiresAt || tokenBundle.expires_at),
+        last_refresh: new Date().toISOString(),
+      };
+    }
+
+    async function importCockpitToolsOAuthTokens(tokenBundle = {}, platformVerifyStep = 10) {
+      if (typeof fetchApi !== 'function') {
+        throw new Error('当前运行环境不支持 fetch，无法调用 cockpit-tools API。');
+      }
+      const payload = buildCockpitToolsTokenImportPayload(tokenBundle);
+      if (!payload.tokens.access_token || !payload.tokens.id_token) {
+        throw new Error('OAuth token 交换结果缺少 access_token 或 id_token，无法导入 cockpit-tools。');
+      }
+      let lastError = '';
+      for (const endpoint of buildCockpitToolsImportEndpoints()) {
+        try {
+          const response = await fetchApi(endpoint, {
+            method: 'POST',
+            headers: {
+              Accept: 'application/json',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ payload }),
+          });
+          const responseText = await response.text().catch(() => '');
+          const responseJson = responseText ? JSON.parse(responseText) : null;
+          if (!response.ok) {
+            const message = responseJson?.error?.message
+              || responseJson?.message
+              || responseText
+              || `HTTP ${response.status}`;
+            lastError = `${endpoint}: ${message}`;
+            continue;
+          }
+          return responseJson || { ok: true };
+        } catch (error) {
+          lastError = `${endpoint}: ${error?.message || String(error || '请求失败')}`;
+        }
+      }
+      throw new Error(`步骤 ${platformVerifyStep}：未能通过本机桥导入 cockpit-tools OAuth Token，请确认 cockpit-tools 正在运行且 WebSocket 服务已启用。最后错误：${lastError}`);
+    }
+
+    async function executeCockpitToolsStep10(state) {
+      const platformVerifyStep = resolvePlatformVerifyStep(state);
+      const confirmOauthStep = resolveConfirmOauthStep(platformVerifyStep);
+      const authLoginStep = resolveAuthLoginStep(platformVerifyStep);
+      if (state.localhostUrl && !isLocalhostOAuthCallbackUrl(state.localhostUrl)) {
+        throw new Error(`步骤 ${confirmOauthStep} 捕获到的 localhost OAuth 回调地址无效，请重新执行步骤 ${confirmOauthStep}。`);
+      }
+      if (!state.localhostUrl) {
+        throw new Error(`缺少 localhost 回调地址，请先完成步骤 ${confirmOauthStep}。`);
+      }
+      if (!state.cockpitToolsPkceCodes?.codeVerifier) {
+        throw new Error(`缺少 cockpit-tools OAuth PKCE 会话信息，请重新执行步骤 ${authLoginStep}。`);
+      }
+
+      const callback = parseLocalhostCallback(state.localhostUrl, platformVerifyStep);
+      const expectedState = normalizeString(state.cockpitToolsOAuthState);
+      if (expectedState && expectedState !== callback.state) {
+        throw new Error(`cockpit-tools OAuth 回调 state 与当前授权会话不匹配，请重新执行步骤 ${authLoginStep}。`);
+      }
+
+      await addStepLog(platformVerifyStep, '正在交换 OAuth 授权码并导入 cockpit-tools...');
+      const api = getLocalCliProxyApi();
+      const tokenBundle = await api.exchangeCodeForTokens({
+        code: callback.code,
+        pkceCodes: state.cockpitToolsPkceCodes,
+      });
+      const result = await importCockpitToolsOAuthTokens(tokenBundle, platformVerifyStep);
+
+      const verifiedStatus = normalizeString(result?.message) || 'cockpit-tools OAuth 账号导入成功';
+      await addStepLog(platformVerifyStep, verifiedStatus, 'ok');
+      await completeNodeFromBackground(state?.nodeId || 'platform-verify', {
+        localhostUrl: callback.url,
+        verifiedStatus,
+        destination: 'cockpit-tools',
+        account: result?.account || result?.summary || null,
+      });
     }
 
     async function executeCpaStep10(state) {
@@ -515,10 +624,13 @@
 
     return {
       executeCpaStep10,
+      executeCockpitToolsStep10,
       executeCodex2ApiStep10,
       executeLocalCpaJsonStep10,
       executeStep10,
       executeSub2ApiStep10,
+      buildCockpitToolsImportEndpoints,
+      buildCockpitToolsTokenImportPayload,
     };
   }
 

@@ -8455,10 +8455,10 @@ function updateSignupMethodUI(options = {}) {
     if (method === SIGNUP_METHOD_PHONE) {
       if (!Boolean(inputPhoneVerificationEnabled?.checked)) {
         button.title = '开启接码后可选择手机号注册';
-      } else if (typeof inputPlusModeEnabled !== 'undefined' && inputPlusModeEnabled?.checked) {
-        button.title = 'Plus 模式第一版暂不支持手机号注册';
       } else if (latestState?.contributionMode) {
         button.title = '贡献模式第一版暂不支持手机号注册';
+      } else if (typeof inputPlusModeEnabled !== 'undefined' && inputPlusModeEnabled?.checked && !phoneSelectable) {
+        button.title = '当前面板模式在 Plus 模式下暂不支持手机号注册';
       } else if (locked) {
         button.title = '自动流程运行中不能切换注册方式';
       } else {
@@ -12001,8 +12001,6 @@ function updatePanelModeUI() {
   );
   if (rawExportTarget === 'codex2api') {
     rawStrategyUiValue = ACCOUNT_ACCESS_STRATEGY_UI_OAUTH;
-  } else if (rawExportTarget === COCKPIT_TOOLS_PANEL_MODE) {
-    rawStrategyUiValue = ACCOUNT_ACCESS_STRATEGY_UI_SESSION_JSON;
   }
   const rawPanelMode = resolvePanelModeFromExportAndStrategy(rawExportTarget, rawStrategyUiValue);
   const rawPlusAccountAccessStrategy = resolvePlusAccountAccessStrategyFromExportAndStrategy(
@@ -12058,16 +12056,15 @@ function updatePanelModeUI() {
       : rawStrategyUiValue);
   if (exportTarget === 'codex2api') {
     strategyUiValue = ACCOUNT_ACCESS_STRATEGY_UI_OAUTH;
-  } else if (exportTarget === COCKPIT_TOOLS_PANEL_MODE) {
-    strategyUiValue = ACCOUNT_ACCESS_STRATEGY_UI_SESSION_JSON;
   }
   if (selectAccountAccessStrategy) {
     selectAccountAccessStrategy.value = strategyUiValue;
-    const lockStrategy = exportTarget === 'codex2api' || exportTarget === COCKPIT_TOOLS_PANEL_MODE;
+    const lockStrategy = exportTarget === 'codex2api'
+      || !Boolean(capabilityState?.canEditPlusAccountAccessStrategy);
     selectAccountAccessStrategy.disabled = lockStrategy;
     selectAccountAccessStrategy.title = exportTarget === 'codex2api'
       ? 'Codex2API 仅支持 OAuth'
-      : (exportTarget === COCKPIT_TOOLS_PANEL_MODE ? 'cockpit-tools 使用 SESSION JSON 导入' : '');
+      : '';
     Array.from(selectAccountAccessStrategy.options || []).forEach((option) => {
       if (option.value === ACCOUNT_ACCESS_STRATEGY_UI_SESSION_JSON) {
         const sessionStrategy = resolvePlusAccountAccessStrategyFromExportAndStrategy(exportTarget, ACCOUNT_ACCESS_STRATEGY_UI_SESSION_JSON);
@@ -12087,7 +12084,9 @@ function updatePanelModeUI() {
   if (accountAccessStrategyCaption) {
     accountAccessStrategyCaption.textContent = exportTarget === 'codex2api'
       ? '仅支持 OAuth'
-      : (exportTarget === COCKPIT_TOOLS_PANEL_MODE ? '自动导入 SESSION JSON' : '');
+      : (exportTarget === COCKPIT_TOOLS_PANEL_MODE
+        ? (strategyUiValue === ACCOUNT_ACCESS_STRATEGY_UI_SESSION_JSON ? '自动导入 SESSION JSON' : 'OAuth 回调验证')
+        : '');
   }
   const useLocalCpaJson = panelMode === LOCAL_CPA_JSON_PANEL_MODE || panelMode === LOCAL_CPA_JSON_NO_RT_PANEL_MODE;
   const useLocalCpaJsonNoRt = panelMode === LOCAL_CPA_JSON_NO_RT_PANEL_MODE;

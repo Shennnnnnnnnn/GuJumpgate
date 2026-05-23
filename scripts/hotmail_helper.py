@@ -66,6 +66,7 @@ FETCH_LIMIT_DEFAULT = 5
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 ACCOUNT_LOG_PATH = os.path.join(BASE_DIR, "data", "account-run-history.txt")
 ACCOUNT_RECORDS_SNAPSHOT_PATH = os.path.join(BASE_DIR, "data", "account-run-history.json")
+COCKPIT_TOOLS_SESSION_RECORDS_PATH = os.path.join(BASE_DIR, "data", "cockpit-tools-session-records.json")
 ACCOUNT_RECORDS_LOCK = threading.Lock()
 
 
@@ -237,6 +238,70 @@ def save_local_cpa_json(file_path, content, directory_path=""):
     target_path.parent.mkdir(parents=True, exist_ok=True)
     target_path.write_text(str(content or ""), encoding="utf-8")
     return str(target_path)
+
+
+def load_cockpit_tools_session_records():
+    if not os.path.exists(COCKPIT_TOOLS_SESSION_RECORDS_PATH):
+        return []
+    try:
+        with open(COCKPIT_TOOLS_SESSION_RECORDS_PATH, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except Exception:
+        return []
+    records = payload.get("records") if isinstance(payload, dict) else payload
+    return records if isinstance(records, list) else []
+
+
+def save_cockpit_tools_session_records(records):
+    os.makedirs(os.path.dirname(COCKPIT_TOOLS_SESSION_RECORDS_PATH), exist_ok=True)
+    payload = {
+        "updatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "records": records,
+    }
+    with open(COCKPIT_TOOLS_SESSION_RECORDS_PATH, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=2)
+        handle.write("\n")
+    return COCKPIT_TOOLS_SESSION_RECORDS_PATH
+
+
+def normalize_session_record_email(record):
+    if not isinstance(record, dict):
+        return ""
+    return str(record.get("email") or "").strip().lower()
+
+
+def handle_cockpit_tools_session_records(payload):
+    action = str(payload.get("action") or "load").strip().lower()
+    record = payload.get("record") if isinstance(payload.get("record"), dict) else {}
+    records = load_cockpit_tools_session_records()
+
+    if action == "load":
+        return {
+            "ok": True,
+            "filePath": COCKPIT_TOOLS_SESSION_RECORDS_PATH,
+            "records": records,
+        }
+
+    email_addr = normalize_session_record_email(record)
+    if not email_addr:
+        raise RuntimeError("Missing record.email")
+
+    next_records = [item for item in records if normalize_session_record_email(item) != email_addr]
+    if action == "upsert":
+        next_record = dict(record)
+        next_record["email"] = email_addr
+        next_records.append(next_record)
+    elif action == "delete":
+        pass
+    else:
+        raise RuntimeError(f"Unsupported cockpit-tools session record action: {action}")
+
+    file_path = save_cockpit_tools_session_records(next_records)
+    return {
+        "ok": True,
+        "filePath": file_path,
+        "records": next_records,
+    }
 
 
 def normalize_account_run_snapshot_record(record):
@@ -895,6 +960,10 @@ class HotmailHelperHandler(BaseHTTPRequestHandler):
                     "ok": True,
                     "filePath": file_path,
                 })
+                return
+
+            if request_path == "/cockpit-tools-session-records":
+                json_response(self, 200, handle_cockpit_tools_session_records(payload))
                 return
 
             email_addr = str(payload.get("email") or "").strip()

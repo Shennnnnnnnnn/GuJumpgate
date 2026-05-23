@@ -7,6 +7,7 @@
   const COCKPIT_TOOLS_BRIDGE_PORT_START = 19528;
   const COCKPIT_TOOLS_BRIDGE_PORT_ATTEMPTS = 100;
   const CHATGPT_SESSION_URL = 'https://chatgpt.com/api/auth/session';
+  const COCKPIT_TOOLS_SESSION_RECORDS_PATH = '/cockpit-tools-session-records';
 
   function createCockpitToolsSessionImportExecutor(deps = {}) {
     const {
@@ -16,6 +17,7 @@
       fetch: fetchApi = typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : null,
       getTabId,
       isTabAlive,
+      buildLocalHelperEndpoint = null,
       registerTab,
       setState = async () => {},
       sleepWithStop = async () => {},
@@ -45,6 +47,188 @@
       return Array.from({ length: COCKPIT_TOOLS_BRIDGE_PORT_ATTEMPTS }, (_item, index) => (
         `http://127.0.0.1:${COCKPIT_TOOLS_BRIDGE_PORT_START + index}/v1/codex/accounts/import`
       ));
+    }
+
+    function buildCockpitToolsListEndpoints() {
+      return Array.from({ length: COCKPIT_TOOLS_BRIDGE_PORT_ATTEMPTS }, (_item, index) => (
+        `http://127.0.0.1:${COCKPIT_TOOLS_BRIDGE_PORT_START + index}/v1/codex/accounts`
+      ));
+    }
+
+    function buildCockpitToolsDeleteEndpoints() {
+      return Array.from({ length: COCKPIT_TOOLS_BRIDGE_PORT_ATTEMPTS }, (_item, index) => (
+        `http://127.0.0.1:${COCKPIT_TOOLS_BRIDGE_PORT_START + index}/v1/codex/accounts/delete`
+      ));
+    }
+
+    function base64UrlDecode(value = '') {
+      const normalized = String(value || '').replace(/-/g, '+').replace(/_/g, '/');
+      const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+      if (typeof atob === 'function') {
+        return atob(padded);
+      }
+      if (typeof Buffer !== 'undefined') {
+        return Buffer.from(padded, 'base64').toString('utf8');
+      }
+      throw new Error('当前环境不支持 JWT 解码。');
+    }
+
+    function decodeJwtPayload(token = '') {
+      const parts = String(token || '').split('.');
+      if (parts.length < 2 || !parts[1]) {
+        return null;
+      }
+      try {
+        return JSON.parse(base64UrlDecode(parts[1]));
+      } catch {
+        return null;
+      }
+    }
+
+    function getSessionAccessToken(sessionState = {}) {
+      return normalizeString(
+        sessionState?.accessToken
+        || sessionState?.session?.accessToken
+        || sessionState?.session?.access_token
+      );
+    }
+
+    function isSessionAccessTokenExpired(sessionState = {}, options = {}) {
+      const token = getSessionAccessToken(sessionState);
+      const payload = decodeJwtPayload(token);
+      const exp = Math.floor(Number(payload?.exp) || 0);
+      if (!exp) {
+        return false;
+      }
+      const nowSeconds = Math.floor(Number(options.nowMs || Date.now()) / 1000);
+      const skewSeconds = Math.max(0, Math.floor(Number(options.skewSeconds) || 300));
+      return exp <= nowSeconds + skewSeconds;
+    }
+
+    function getSessionEmail(sessionState = {}) {
+      return normalizeString(
+        sessionState?.session?.user?.email
+        || sessionState?.session?.account?.email
+        || sessionState?.session?.email
+      ).toLowerCase();
+    }
+
+    function getSessionAccountId(sessionState = {}) {
+      return normalizeString(
+        sessionState?.session?.account?.id
+        || sessionState?.session?.account_id
+      );
+    }
+
+    function isOpenAiAccountUnavailableSession(sessionState = {}) {
+      const session = sessionState?.session || {};
+      const combined = [
+        session?.error,
+        session?.message,
+        session?.detail,
+        session?.account?.status,
+        session?.account?.state,
+      ].map((value) => normalizeString(value).toLowerCase()).filter(Boolean).join(' ');
+      return /account.*(?:deleted|disabled|deactivated|suspended)|(?:deleted|disabled|deactivated|suspended).*account|账户.*(?:停用|删除|已删)|账号.*(?:停用|删除|已删)/i.test(combined);
+    }
+
+    async function fetchFirstJsonEndpoint(endpoints = [], requestOptions = {}) {
+      if (typeof fetchApi !== 'function') {
+        throw new Error('当前运行环境不支持 fetch，无法调用 cockpit-tools API。');
+      }
+      let lastError = '';
+      for (const endpoint of endpoints) {
+        try {
+          const response = await fetchApi(endpoint, requestOptions);
+          const responseText = await response.text().catch(() => '');
+          const responseJson = responseText ? JSON.parse(responseText) : {};
+          if (!response.ok) {
+            lastError = `${endpoint}: ${responseJson?.message || responseJson?.error?.message || responseText || `HTTP ${response.status}`}`;
+            continue;
+          }
+          return responseJson;
+        } catch (error) {
+          lastError = `${endpoint}: ${error?.message || String(error || '请求失败')}`;
+        }
+      }
+      throw new Error(lastError || 'cockpit-tools API 请求失败。');
+    }
+
+    async function listCockpitToolsCodexAccounts() {
+      const payload = await fetchFirstJsonEndpoint(buildCockpitToolsListEndpoints(), {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+      });
+      return Array.isArray(payload?.accounts) ? payload.accounts : [];
+    }
+
+    function cockpitAccountNeedsReauth(account = {}) {
+      return Boolean(account?.requires_reauth)
+        || Boolean(account?.requiresReauth)
+        || /reauth|重新登录|重新授权|invalid_grant|refresh_token/i.test(normalizeString(account?.reauth_reason || account?.reauthReason || account?.quota_error?.message));
+    }
+
+    async function deleteCockpitToolsCodexAccountByEmail(email = '') {
+      const normalizedEmail = normalizeString(email).toLowerCase();
+      if (!normalizedEmail) {
+        return null;
+      }
+      return fetchFirstJsonEndpoint(buildCockpitToolsDeleteEndpoints(), {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: normalizedEmail }),
+      });
+    }
+
+    function buildLocalSessionRecordsEndpoint(state = {}) {
+      const baseUrl = normalizeString(state?.hotmailLocalBaseUrl);
+      if (!baseUrl) {
+        return '';
+      }
+      return typeof buildLocalHelperEndpoint === 'function'
+        ? buildLocalHelperEndpoint(baseUrl, COCKPIT_TOOLS_SESSION_RECORDS_PATH)
+        : new URL(COCKPIT_TOOLS_SESSION_RECORDS_PATH, `${baseUrl.replace(/\/+$/, '')}/`).toString();
+    }
+
+    async function updateLocalSessionRecord(state = {}, action = 'upsert', record = {}) {
+      const endpoint = buildLocalSessionRecordsEndpoint(state);
+      if (!endpoint || typeof fetchApi !== 'function') {
+        return null;
+      }
+      try {
+        const response = await fetchApi(endpoint, {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ action, record }),
+        });
+        return await response.json().catch(() => null);
+      } catch (error) {
+        await addStepLog(resolveVisibleStep(state, 8), `写入 cockpit-tools session 本地记录失败：${error?.message || error}`, 'warn');
+        return null;
+      }
+    }
+
+    async function syncCockpitToolsReauthStateBeforeImport(state = {}, sessionState = {}, visibleStep) {
+      const email = getSessionEmail(sessionState);
+      if (!email) {
+        return;
+      }
+      try {
+        const accounts = await listCockpitToolsCodexAccounts();
+        const account = accounts.find((item) => normalizeString(item?.email).toLowerCase() === email) || null;
+        if (account && cockpitAccountNeedsReauth(account)) {
+          await addStepLog(visibleStep, `检测到 cockpit-tools 中 ${email} 的 OAuth/session 已失效，将删除旧账号后导入最新 Session。`, 'warn');
+          await deleteCockpitToolsCodexAccountByEmail(email);
+        }
+      } catch (error) {
+        await addStepLog(visibleStep, `检查 cockpit-tools 已有账号状态失败，将继续尝试导入最新 Session：${error?.message || error}`, 'warn');
+      }
     }
 
     function isSupportedChatGptSessionUrl(url = '') {
@@ -436,6 +620,17 @@
       };
     }
 
+    function buildLocalSessionRecord(sessionState = {}, result = {}) {
+      return {
+        email: getSessionEmail(sessionState),
+        accountId: getSessionAccountId(sessionState) || normalizeString(result?.account?.id || result?.summary?.id),
+        planType: normalizeString(sessionState?.session?.account?.planType || result?.account?.plan_type || result?.account?.planType),
+        capturedAt: sessionState?.capturedAt || Date.now(),
+        importedAt: Date.now(),
+        accessTokenExpiresAt: Math.floor(Number(decodeJwtPayload(getSessionAccessToken(sessionState))?.exp) || 0),
+      };
+    }
+
     function buildSessionReadyCompletionResult(sessionState = {}) {
       const session = sessionState?.session || {};
       return {
@@ -483,8 +678,32 @@
       }
 
       throwIfStopped();
+      if (isOpenAiAccountUnavailableSession(sessionState)) {
+        const email = getSessionEmail(sessionState);
+        if (email) {
+          await addStepLog(visibleStep, `检测到 ${email} 账户已停用或删除，删除 cockpit-tools 侧账号并跳过 Session 刷新。`, 'warn');
+          await deleteCockpitToolsCodexAccountByEmail(email).catch((error) => addStepLog(visibleStep, `删除 cockpit-tools 账号失败：${error?.message || error}`, 'warn'));
+          await updateLocalSessionRecord(state, 'delete', { email });
+        }
+        await completeNodeFromBackground(state?.nodeId || 'cockpit-tools-session-import', {
+          imported: false,
+          skipped: true,
+          reason: 'account_unavailable',
+          destination: 'cockpit-tools',
+        });
+        return;
+      }
+      if (isSessionAccessTokenExpired(sessionState)) {
+        await addStepLog(visibleStep, '当前 Session accessToken 已过期或即将过期，将用当前登录态刷新 Session JSON 后再导入。', 'warn');
+        const tabId = await getOrOpenSessionJsonTab(state, visibleStep);
+        await refreshSessionJsonTab(tabId, visibleStep);
+        sessionState = await waitForPlusChatGptSession(tabId, visibleStep, 'cockpit-tools-session-import', state);
+        cachedPlusSessionState = sessionState;
+      }
+      await syncCockpitToolsReauthStateBeforeImport(state, sessionState, visibleStep);
       await addStepLog(visibleStep, '已读取 Plus Session JSON，正在提交到 cockpit-tools...', 'info');
       const result = await importSessionToCockpitTools(state, sessionState, visibleStep);
+      await updateLocalSessionRecord(state, 'upsert', buildLocalSessionRecord(sessionState, result));
       await addStepLog(visibleStep, 'cockpit-tools 导入完成。', 'success');
       await completeNodeFromBackground(state?.nodeId || 'cockpit-tools-session-import', buildCompletionResult(result));
     }
@@ -493,7 +712,10 @@
       executeCockpitToolsSessionReady,
       executeCockpitToolsSessionImport,
       isSupportedChatGptSessionUrl,
+      isSessionAccessTokenExpired,
       buildCockpitToolsImportEndpoints,
+      buildCockpitToolsListEndpoints,
+      buildCockpitToolsDeleteEndpoints,
     };
   }
 

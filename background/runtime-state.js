@@ -40,6 +40,8 @@
         'sub2apiGroupIds',
         'codex2apiSessionId',
         'codex2apiOAuthState',
+        'cockpitToolsOAuthState',
+        'cockpitToolsPkceCodes',
       ]),
       plus: Object.freeze([
         'plusCheckoutTabId',

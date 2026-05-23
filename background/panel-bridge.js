@@ -194,6 +194,9 @@
     }
 
     async function requestOAuthUrlFromPanel(state, options = {}) {
+      if (getPanelMode(state) === 'cockpit-tools') {
+        return requestCockpitToolsOAuthUrl(state, options);
+      }
       if (getPanelMode(state) === 'local-cpa-json') {
         return requestLocalCpaJsonOAuthUrl(state, options);
       }
@@ -204,6 +207,20 @@
         return requestSub2ApiOAuthUrl(state, options);
       }
       return requestCpaOAuthUrl(state, options);
+    }
+
+    async function requestCockpitToolsOAuthUrl(_state, options = {}) {
+      const { logLabel = 'OAuth 刷新' } = options;
+
+      await addLog(`${logLabel}：正在按 cockpit-tools OAuth 模式生成授权链接...`);
+      const api = getLocalCliProxyApi();
+      const result = await api.createAuthorizationRequest();
+
+      return {
+        oauthUrl: result.oauthUrl,
+        cockpitToolsOAuthState: result.oauthState || null,
+        cockpitToolsPkceCodes: result.pkceCodes || null,
+      };
     }
 
     async function requestCpaOAuthUrl(state, options = {}) {
@@ -331,6 +348,7 @@
 
     return {
       requestOAuthUrlFromPanel,
+      requestCockpitToolsOAuthUrl,
       requestLocalCpaJsonOAuthUrl,
       requestCodex2ApiOAuthUrl,
       requestCpaOAuthUrl,

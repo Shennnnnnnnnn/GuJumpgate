@@ -56,9 +56,10 @@
     }
 
     function canUseConfiguredPhoneSignup(state = {}) {
+      const allowsPhoneSignupDuringPlusMode = String(state?.panelMode || '').trim().toLowerCase() === 'cockpit-tools';
       return normalizeStep7SignupMethod(state?.signupMethod) === 'phone'
         && Boolean(state?.phoneVerificationEnabled)
-        && !Boolean(state?.plusModeEnabled)
+        && (!Boolean(state?.plusModeEnabled) || allowsPhoneSignupDuringPlusMode)
         && !Boolean(state?.contributionMode);
     }
 
