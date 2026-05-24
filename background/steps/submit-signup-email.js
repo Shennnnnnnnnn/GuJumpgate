@@ -30,6 +30,15 @@
       return /未找到可用的邮箱输入入口|当前页面没有可用的注册入口，也不在邮箱\/密码页/i.test(message);
     }
 
+    function isAuthLoginSignupEntryUnavailableErrorMessage(errorLike) {
+      const message = getErrorMessage(errorLike);
+      if (!isSignupEntryUnavailableErrorMessage(message)) {
+        return false;
+      }
+
+      return /URL:\s*https:\/\/(?:www\.)?chatgpt\.com\/auth\/login(?:[?#][^\s]*)?/i.test(message);
+    }
+
     function isSignupPhoneEntryUnavailableErrorMessage(errorLike) {
       const message = getErrorMessage(errorLike);
       return /未找到可用的手机号输入入口|当前页面没有可用的手机号注册入口，也不在密码页/i.test(message);
@@ -54,7 +63,7 @@
         }
 
         const path = String(parsed.pathname || '');
-        if (/^\/(?:auth\/|create-account\/|email-verification|log-in|add-phone)(?:[/?#]|$)/i.test(path)) {
+        if (/^\/(?:auth|create-account|email-verification|log-in|add-phone)(?:[/?#]|$)/i.test(path)) {
           return false;
         }
 
@@ -431,12 +440,20 @@
       if (step2Result?.error) {
         const errorMessage = getErrorMessage(step2Result.error);
         if (isSignupEntryUnavailableErrorMessage(errorMessage)) {
-          await addLog('步骤 2：未找到邮箱输入入口，正在切换认证入口页后重试一次...', 'warn');
-          signupTabId = (await ensureSignupAuthEntryPageReady(2)).tabId;
+          const shouldReopenSignupEntry = isAuthLoginSignupEntryUnavailableErrorMessage(errorMessage);
+          if (shouldReopenSignupEntry) {
+            await addLog('步骤 2：当前停留在 ChatGPT 登录页且未找到注册入口，正在重新打开官网入口后重试一次...', 'warn');
+            signupTabId = (await ensureSignupEntryPageReady(2)).tabId;
+          } else {
+            await addLog('步骤 2：未找到邮箱输入入口，正在切换认证入口页后重试一次...', 'warn');
+            signupTabId = (await ensureSignupAuthEntryPageReady(2)).tabId;
+          }
           step2Result = await submitSignupEmail(resolvedEmail, {
             timeoutMs: 35000,
             retryDelayMs: 700,
-            logMessage: '步骤 2：认证入口页已打开，正在重新提交邮箱...',
+            logMessage: shouldReopenSignupEntry
+              ? '步骤 2：官网入口已重新打开，正在重新提交邮箱...'
+              : '步骤 2：认证入口页已打开，正在重新提交邮箱...',
           });
 
           if (step2Result?.error) {
