@@ -667,24 +667,6 @@
       const stateForStep = await getState();
       const stepKey = getStepKeyForState(step, stateForStep);
 
-      if (stepKey === 'fill-profile') {
-        const latestState = await getState();
-        if (latestState.currentHotmailAccountId && isHotmailProvider(latestState)) {
-          if (typeof markCurrentRegistrationAccountUsed === 'function') {
-            await markCurrentRegistrationAccountUsed(latestState, {
-              logPrefix: '步骤 5 完成',
-              level: 'ok',
-            });
-          } else {
-            await patchHotmailAccount(latestState.currentHotmailAccountId, {
-              used: true,
-              lastUsedAt: Date.now(),
-            });
-            await addLog('步骤 5 完成：当前 Hotmail 账号已标记为已用。', 'ok');
-          }
-        }
-      }
-
       if (stepKey === 'oauth-login' || stepKey === 'relogin-bound-email') {
         if (stepKey === 'oauth-login') {
           await syncStepAccountIdentityFromPayload(payload);

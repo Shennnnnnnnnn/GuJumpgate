@@ -345,7 +345,7 @@
       if (isHotmailProvider(state)) {
         const account = await ensureHotmailAccountForFlow({
           allowAllocate: true,
-          markUsed: true,
+          markUsed: false,
           preferredAccountId: state.currentHotmailAccountId || null,
         });
         resolvedEmail = account.registrationAliasEmail || account.email;

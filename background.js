@@ -624,8 +624,11 @@ const DEFAULT_LUCKMAIL_PROJECT_CODE = 'openai';
 const DEFAULT_HERO_SMS_BASE_URL = 'https://hero-sms.com/stubs/handler_api.php';
 const HERO_SMS_SERVICE_CODE = 'dr';
 const HERO_SMS_SERVICE_LABEL = 'OpenAI';
-const HERO_SMS_COUNTRY_ID = 52;
-const HERO_SMS_COUNTRY_LABEL = 'Thailand';
+const HERO_SMS_COUNTRY_ID = 73;
+const HERO_SMS_COUNTRY_LABEL = 'Brazil';
+const DEFAULT_HERO_SMS_COUNTRY_FALLBACK = Object.freeze([
+  { id: 151, label: 'Chile' },
+]);
 const PHONE_SMS_PROVIDER_HERO = 'hero-sms';
 const PHONE_SMS_PROVIDER_5SIM = '5sim';
 const PHONE_SMS_PROVIDER_HERO_SMS = PHONE_SMS_PROVIDER_HERO;
@@ -653,16 +656,16 @@ const FIVE_SIM_COUNTRY_ID = 'brazil';
 const FIVE_SIM_COUNTRY_LABEL = '巴西 (Brazil)';
 const FIVE_SIM_SUPPORTED_COUNTRY_IDS = ['brazil', 'chile', 'indonesia', 'thailand', 'vietnam'];
 const FIVE_SIM_SUPPORTED_COUNTRY_ID_SET = new Set(FIVE_SIM_SUPPORTED_COUNTRY_IDS);
-const HERO_SMS_SUPPORTED_COUNTRY_IDS = [6, 52, 187, 16, 151, 43, 73, 10];
+const HERO_SMS_SUPPORTED_COUNTRY_IDS = [73, 151, 6, 52, 187, 16, 43, 10];
 const HERO_SMS_SUPPORTED_COUNTRY_ID_SET = new Set(HERO_SMS_SUPPORTED_COUNTRY_IDS.map(String));
 const HERO_SMS_COUNTRY_BY_PHONE_PREFIX = Object.freeze([
+  { prefix: '55', id: 73, label: 'Brazil' },
+  { prefix: '56', id: 151, label: 'Chile' },
   { prefix: '84', id: 10, label: 'Vietnam' },
   { prefix: '66', id: 52, label: 'Thailand' },
   { prefix: '62', id: 6, label: 'Indonesia' },
   { prefix: '44', id: 16, label: 'United Kingdom' },
-  { prefix: '81', id: 151, label: 'Japan' },
   { prefix: '49', id: 43, label: 'Germany' },
-  { prefix: '33', id: 73, label: 'France' },
   { prefix: '1', id: 187, label: 'USA' },
 ]);
 const FIVE_SIM_OPERATOR = DEFAULT_FIVE_SIM_OPERATOR;
@@ -1161,7 +1164,7 @@ const PERSISTED_SETTING_DEFAULTS = {
   heroSmsPreferredPrice: '',
   heroSmsCountryId: HERO_SMS_COUNTRY_ID,
   heroSmsCountryLabel: HERO_SMS_COUNTRY_LABEL,
-  heroSmsCountryFallback: [],
+  heroSmsCountryFallback: [...DEFAULT_HERO_SMS_COUNTRY_FALLBACK],
   fiveSimApiKey: '',
   fiveSimProduct: DEFAULT_FIVE_SIM_PRODUCT,
   fiveSimCountryId: FIVE_SIM_COUNTRY_ID,
@@ -2664,6 +2667,22 @@ function normalizeMailProvider(value = '') {
   }
 }
 
+function shouldMigrateLegacyHeroSmsDefaultCountrySelection(input = {}) {
+  const provider = normalizePhoneSmsProvider(input.phoneSmsProvider || DEFAULT_PHONE_SMS_PROVIDER);
+  if (provider !== PHONE_SMS_PROVIDER_HERO_SMS) {
+    return false;
+  }
+  const countryId = Math.floor(Number(input.heroSmsCountryId));
+  if (countryId !== 52) {
+    return false;
+  }
+  const countryLabel = String(input.heroSmsCountryLabel || '').trim();
+  if (countryLabel && !/^(?:thailand|泰国)$/i.test(countryLabel)) {
+    return false;
+  }
+  return normalizeHeroSmsCountryFallback(input.heroSmsCountryFallback || []).length === 0;
+}
+
 function buildLuckmailSessionSettingsPayload(input = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
     return {};
@@ -3454,6 +3473,11 @@ function buildPersistentSettingsPayload(input = {}, options = {}) {
     if (legacyVerificationResendCount !== undefined) {
       normalizedInput.verificationResendCount = legacyVerificationResendCount;
     }
+  }
+  if (shouldMigrateLegacyHeroSmsDefaultCountrySelection(normalizedInput)) {
+    normalizedInput.heroSmsCountryId = HERO_SMS_COUNTRY_ID;
+    normalizedInput.heroSmsCountryLabel = HERO_SMS_COUNTRY_LABEL;
+    normalizedInput.heroSmsCountryFallback = [...DEFAULT_HERO_SMS_COUNTRY_FALLBACK];
   }
 
   const payload = {};
@@ -9445,7 +9469,7 @@ async function restartSignupPhonePasswordMismatchAttemptFromNode(nodeId, restart
   const emailSuffix = preservedEmail ? `当前邮箱：${preservedEmail}；` : '';
   const phoneSuffix = activeSignupPhoneNumber ? `当前手机号：${activeSignupPhoneNumber}；` : '';
   const errorMessage = getErrorMessage(error);
-  const reasonLabel = /PHONE_RESEND_BANNED_NUMBER::|无法向此(?:电话|手机)号码发送短信|无法发送短信到此(?:电话|手机)号码|unable\s+to\s+send\s+(?:an?\s+)?(?:sms|text(?:\s+message)?)\s+to\s+(?:this|that)\s+(?:phone\s+)?number/i
+  const reasonLabel = /PHONE_RESEND_BANNED_NUMBER::|无法向此(?:电话|手机)号码发送(?:短信|文本消息)|无法发送(?:短信|文本消息)到此(?:电话|手机)号码|unable\s+to\s+send\s+(?:an?\s+)?(?:sms|text(?:\s+message)?)\s+to\s+(?:this|that)\s+(?:phone\s+)?number/i
     .test(errorMessage)
     ? '当前注册手机号无法接收短信'
     : (/与此(?:电话|手机)号码相关联的帐户已存在|account\s+associated\s+with\s+this\s+phone\s+number\s+already\s+exists/i
@@ -12503,7 +12527,7 @@ async function ensureAutoEmailReady(targetRun, totalRuns, attemptRuns) {
   if (isHotmailProvider(currentState)) {
     const account = await ensureHotmailAccountForFlow({
       allowAllocate: true,
-      markUsed: true,
+      markUsed: false,
       preferredAccountId: null,
     });
     await addLog(`=== 目标 ${targetRun}/${totalRuns} 轮：已分配 Hotmail 账号 ${account.email}（第 ${attemptRuns} 次尝试）===`, 'ok');
@@ -12634,7 +12658,7 @@ async function ensureAutoEmailReady(targetRun, totalRuns, attemptRuns) {
   if (isHotmailProvider(currentState)) {
     const account = await ensureHotmailAccountForFlow({
       allowAllocate: true,
-      markUsed: true,
+      markUsed: false,
       preferredAccountId: null,
     });
     await addLog(`=== 目标 ${targetRun}/${totalRuns} 轮：已分配 Hotmail 账号 ${account.email}（第 ${attemptRuns} 次尝试）===`, 'ok');

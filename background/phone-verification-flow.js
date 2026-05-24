@@ -29,8 +29,8 @@
       DEFAULT_NEX_SMS_SERVICE_CODE = 'ot',
       DEFAULT_HERO_SMS_REUSE_ENABLED = true,
       createFiveSimProvider = null,
-      HERO_SMS_COUNTRY_ID = 52,
-      HERO_SMS_COUNTRY_LABEL = 'Thailand',
+      HERO_SMS_COUNTRY_ID = 73,
+      HERO_SMS_COUNTRY_LABEL = 'Brazil',
       HERO_SMS_SERVICE_CODE = 'dr',
       HERO_SMS_SERVICE_LABEL = 'OpenAI',
       DEFAULT_PHONE_CODE_WAIT_SECONDS = 60,
@@ -67,6 +67,7 @@
     const DEFAULT_PHONE_POLL_TIMEOUT_MS = 180000;
     const DEFAULT_PHONE_REQUEST_TIMEOUT_MS = 20000;
     const DEFAULT_PHONE_SUBMIT_ATTEMPTS = 3;
+    const PHONE_CODE_UNAVAILABLE_AFTER_POLL_ROUNDS = 12;
     const DEFAULT_PHONE_NUMBER_MAX_USES = 3;
     const DEFAULT_PHONE_NUMBER_REPLACEMENT_LIMIT = 3;
     const DEFAULT_PHONE_PRICE_LOOKUP_ATTEMPTS = 3;
@@ -105,13 +106,13 @@
     const PHONE_SMS_FAILURE_SKIP_THRESHOLD = 2;
     const MAX_ACTIVATION_PRICE_HINTS = 256;
     const HERO_SMS_COUNTRY_BY_PHONE_PREFIX = Object.freeze([
+      { prefix: '55', id: 73, label: 'Brazil' },
+      { prefix: '56', id: 151, label: 'Chile' },
       { prefix: '84', id: 10, label: 'Vietnam' },
       { prefix: '66', id: 52, label: 'Thailand' },
       { prefix: '62', id: 6, label: 'Indonesia' },
       { prefix: '44', id: 16, label: 'United Kingdom' },
-      { prefix: '81', id: 151, label: 'Japan' },
       { prefix: '49', id: 43, label: 'Germany' },
-      { prefix: '33', id: 73, label: 'France' },
       { prefix: '1', id: 187, label: 'USA' },
     ]);
     const activationPriceHintsByKey = new Map();
@@ -471,7 +472,7 @@
       if (!text) {
         return false;
       }
-      return /无法向此电话号码发送验证码|无法向.*(?:电话号码|手机号|号码).*发送(?:验证码|短信)|(?:不能|无法).*发送.*(?:验证码|短信).*(?:电话号码|手机号|号码)|(?:cannot|can't|could\s*not|couldn't|unable\s+to)\s+(?:send|deliver).{0,80}(?:verification\s+code|code|sms|text(?:\s+message)?).{0,80}(?:phone|number)|(?:verification\s+code|sms|text(?:\s+message)?).{0,80}(?:cannot|can't|could\s*not|couldn't|unable\s+to).{0,80}(?:send|deliver)/i.test(text);
+      return /无法向此电话号码发送(?:验证码|短信|文本消息)|无法向.*(?:电话号码|手机号|号码).*发送(?:验证码|短信|文本消息)|(?:不能|无法).*发送.*(?:验证码|短信|文本消息).*(?:电话号码|手机号|号码)|(?:cannot|can't|could\s*not|couldn't|unable\s+to)\s+(?:send|deliver).{0,80}(?:verification\s+code|code|sms|text(?:\s+message)?).{0,80}(?:phone|number)|(?:verification\s+code|sms|text(?:\s+message)?).{0,80}(?:cannot|can't|could\s*not|couldn't|unable\s+to).{0,80}(?:send|deliver)/i.test(text);
     }
 
     function isWhatsAppPhoneResendResult(value) {
@@ -1685,7 +1686,7 @@
       if (message.startsWith(PHONE_RESEND_BANNED_NUMBER_ERROR_PREFIX)) {
         return true;
       }
-      return /无法向此电话号码发送短信|无法向此手机号发送短信|无法发送短信到此电话号码|无法发送短信到此手机号|can(?:not|'t)\s+send\s+(?:an?\s+)?(?:sms|text(?:\s+message)?)\s+to\s+(?:this|that)\s+(?:phone\s+)?number|unable\s+to\s+send\s+(?:an?\s+)?(?:sms|text(?:\s+message)?)\s+to\s+(?:this|that)\s+(?:phone\s+)?number/i.test(message);
+      return /无法向此电话号码发送(?:短信|文本消息)|无法向此手机号发送(?:短信|文本消息)|无法发送(?:短信|文本消息)到此电话号码|无法发送(?:短信|文本消息)到此手机号|can(?:not|'t)\s+send\s+(?:an?\s+)?(?:sms|text(?:\s+message)?)\s+to\s+(?:this|that)\s+(?:phone\s+)?number|unable\s+to\s+send\s+(?:an?\s+)?(?:sms|text(?:\s+message)?)\s+to\s+(?:this|that)\s+(?:phone\s+)?number/i.test(message);
     }
 
     function isPhoneResendServerError(error) {
@@ -5534,22 +5535,42 @@
         state?.phoneCodePollMaxRounds
       );
       let resendTriggeredForCurrentNumber = false;
+      let totalPollCountForCurrentNumber = 0;
 
       for (let windowIndex = 1; windowIndex <= timeoutWindows; windowIndex += 1) {
+        const remainingPollRounds = PHONE_CODE_UNAVAILABLE_AFTER_POLL_ROUNDS - totalPollCountForCurrentNumber;
+        if (remainingPollRounds <= 0) {
+          await addLog(
+            `步骤 9：号码 ${normalizedActivation.phoneNumber} 连续 ${PHONE_CODE_UNAVAILABLE_AFTER_POLL_ROUNDS} 次轮询仍未收到验证码，判定手机号不可用并更换号码。`,
+            'warn'
+          );
+          await clearPhoneRuntimeCountdown();
+          return {
+            code: '',
+            replaceNumber: true,
+            reason: `sms_timeout_after_${PHONE_CODE_UNAVAILABLE_AFTER_POLL_ROUNDS}_polls`,
+          };
+        }
+        const effectivePollMaxRounds = Math.min(pollMaxRounds, remainingPollRounds);
         await setPhoneRuntimeCountdown(normalizedActivation, waitSeconds, windowIndex, timeoutWindows);
         await addLog(
-          `步骤 9：等待号码 ${normalizedActivation.phoneNumber} 接收短信（等待窗口 ${windowIndex}/${timeoutWindows}，最长 ${waitSeconds} 秒，每 ${pollIntervalSeconds} 秒轮询一次，最多 ${pollMaxRounds} 次轮询）。`,
+          `步骤 9：等待号码 ${normalizedActivation.phoneNumber} 接收短信（等待窗口 ${windowIndex}/${timeoutWindows}，最长 ${waitSeconds} 秒，每 ${pollIntervalSeconds} 秒轮询一次，本窗口最多 ${effectivePollMaxRounds} 次，累计 ${totalPollCountForCurrentNumber}/${PHONE_CODE_UNAVAILABLE_AFTER_POLL_ROUNDS} 次轮询）。`,
           'info'
         );
         try {
+          const pollCountBeforeWindow = totalPollCountForCurrentNumber;
           const code = await pollPhoneActivationCode(state, normalizedActivation, {
             actionLabel: windowIndex === 1
               ? '从接码平台轮询手机验证码'
               : '从接码平台轮询重发后的手机验证码',
             timeoutMs: waitSeconds * 1000,
             intervalMs: pollIntervalSeconds * 1000,
-            maxRounds: pollMaxRounds,
+            maxRounds: effectivePollMaxRounds,
             onStatus: async ({ elapsedMs, pollCount, statusText }) => {
+              totalPollCountForCurrentNumber = Math.max(
+                totalPollCountForCurrentNumber,
+                pollCountBeforeWindow + Math.max(0, Math.floor(Number(pollCount) || 0))
+              );
               if (/^STATUS_(WAIT_CODE|WAIT_RETRY|WAIT_RESEND)(?::.+)?$/i.test(String(statusText || '').trim())) {
                 const pageError = await checkPhoneResendPageError(tabId, state);
                 if (pageError?.reason === 'resend_phone_banned') {
@@ -5572,7 +5593,7 @@
                 }
               }
               await addLog(
-                `步骤 9：${getPhoneSmsProviderLabel(normalizedActivation.provider)} 号码 ${normalizedActivation.phoneNumber} 状态：${statusText}（已等待 ${Math.ceil(elapsedMs / 1000)} 秒，第 ${pollCount}/${pollMaxRounds} 次轮询）。`,
+                `步骤 9：${getPhoneSmsProviderLabel(normalizedActivation.provider)} 号码 ${normalizedActivation.phoneNumber} 状态：${statusText}（已等待 ${Math.ceil(elapsedMs / 1000)} 秒，本窗口第 ${pollCount}/${effectivePollMaxRounds} 次，累计 ${totalPollCountForCurrentNumber}/${PHONE_CODE_UNAVAILABLE_AFTER_POLL_ROUNDS} 次轮询）。`,
                 'info'
               );
             },
@@ -5653,6 +5674,19 @@
               };
             }
             throw error;
+          }
+
+          if (totalPollCountForCurrentNumber >= PHONE_CODE_UNAVAILABLE_AFTER_POLL_ROUNDS) {
+            await addLog(
+              `步骤 9：号码 ${normalizedActivation.phoneNumber} 连续 ${PHONE_CODE_UNAVAILABLE_AFTER_POLL_ROUNDS} 次轮询仍未收到验证码，判定手机号不可用并更换号码。`,
+              'warn'
+            );
+            await clearPhoneRuntimeCountdown();
+            return {
+              code: '',
+              replaceNumber: true,
+              reason: `sms_timeout_after_${PHONE_CODE_UNAVAILABLE_AFTER_POLL_ROUNDS}_polls`,
+            };
           }
 
           if (windowIndex < timeoutWindows) {
@@ -5801,8 +5835,17 @@
           pollIntervalSeconds,
           state?.phoneCodePollMaxRounds
         );
+        let totalPollCountForCurrentNumber = 0;
 
         for (let windowIndex = 1; windowIndex <= timeoutWindows; windowIndex += 1) {
+          const remainingPollRounds = PHONE_CODE_UNAVAILABLE_AFTER_POLL_ROUNDS - totalPollCountForCurrentNumber;
+          if (remainingPollRounds <= 0) {
+            await clearPhoneRuntimeCountdown();
+            throw buildPhoneCodeTimeoutError(
+              `${normalizedActivation.phoneNumber} 连续 ${PHONE_CODE_UNAVAILABLE_AFTER_POLL_ROUNDS} 次轮询仍未收到验证码，判定手机号不可用。`
+            );
+          }
+          const effectivePollMaxRounds = Math.min(pollMaxRounds, remainingPollRounds);
           await setPhoneRuntimeState({
             signupPhoneActivation: normalizedActivation,
             signupPhoneNumber: normalizedActivation.phoneNumber,
@@ -5813,21 +5856,26 @@
             [PHONE_RUNTIME_COUNTDOWN_WINDOW_TOTAL_KEY]: timeoutWindows,
           });
           await addLog(
-            `步骤 ${visibleStep}：正在等待 ${normalizedActivation.phoneNumber} 的短信验证码（等待窗口 ${windowIndex}/${timeoutWindows}，最长 ${waitSeconds} 秒，每 ${pollIntervalSeconds} 秒轮询一次，最多 ${pollMaxRounds} 次轮询）。`,
+            `步骤 ${visibleStep}：正在等待 ${normalizedActivation.phoneNumber} 的短信验证码（等待窗口 ${windowIndex}/${timeoutWindows}，最长 ${waitSeconds} 秒，每 ${pollIntervalSeconds} 秒轮询一次，本窗口最多 ${effectivePollMaxRounds} 次，累计 ${totalPollCountForCurrentNumber}/${PHONE_CODE_UNAVAILABLE_AFTER_POLL_ROUNDS} 次轮询）。`,
             'info',
             { step: visibleStep, stepKey }
           );
           try {
+            const pollCountBeforeWindow = totalPollCountForCurrentNumber;
             const code = await pollPhoneActivationCode(state, normalizedActivation, {
               actionLabel: windowIndex === 1
                 ? `poll ${actionLabelPrefix} code from ${providerLabel}`
                 : `poll resent ${actionLabelPrefix} code from ${providerLabel}`,
               timeoutMs: waitSeconds * 1000,
               intervalMs: pollIntervalSeconds * 1000,
-              maxRounds: pollMaxRounds,
+              maxRounds: effectivePollMaxRounds,
               onStatus: async ({ elapsedMs, pollCount, statusText }) => {
+                totalPollCountForCurrentNumber = Math.max(
+                  totalPollCountForCurrentNumber,
+                  pollCountBeforeWindow + Math.max(0, Math.floor(Number(pollCount) || 0))
+                );
                 await addLog(
-                  `步骤 ${visibleStep}：${providerLabel} 状态 ${normalizedActivation.phoneNumber}: ${statusText}（已等待 ${Math.ceil(elapsedMs / 1000)} 秒，第 ${pollCount}/${pollMaxRounds} 次轮询）。`,
+                  `步骤 ${visibleStep}：${providerLabel} 状态 ${normalizedActivation.phoneNumber}: ${statusText}（已等待 ${Math.ceil(elapsedMs / 1000)} 秒，本窗口第 ${pollCount}/${effectivePollMaxRounds} 次，累计 ${totalPollCountForCurrentNumber}/${PHONE_CODE_UNAVAILABLE_AFTER_POLL_ROUNDS} 次轮询）。`,
                   'info',
                   { step: visibleStep, stepKey }
                 );
@@ -5850,6 +5898,13 @@
                 throw new Error(`步骤 ${visibleStep}：当前手机号激活已失效，请重新执行前置步骤获取新短信。${error.message || error}`);
               }
               throw error;
+            }
+
+            if (totalPollCountForCurrentNumber >= PHONE_CODE_UNAVAILABLE_AFTER_POLL_ROUNDS) {
+              await clearPhoneRuntimeCountdown();
+              throw buildPhoneCodeTimeoutError(
+                `${normalizedActivation.phoneNumber} 连续 ${PHONE_CODE_UNAVAILABLE_AFTER_POLL_ROUNDS} 次轮询仍未收到验证码，判定手机号不可用。`
+              );
             }
 
             if (windowIndex < timeoutWindows) {

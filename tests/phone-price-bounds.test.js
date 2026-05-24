@@ -19,3 +19,9 @@ test('HeroSMS activation does not drop user price bounds on network retry', () =
     /&& !hasUserPriceBounds\s*&& isNetworkFetchFailure\(error\)/
   );
 });
+
+test('phone code polling marks a number unusable after 12 unsuccessful polls', () => {
+  assert.match(source, /const PHONE_CODE_UNAVAILABLE_AFTER_POLL_ROUNDS = 12;/);
+  assert.match(source, /reason:\s*`sms_timeout_after_\$\{PHONE_CODE_UNAVAILABLE_AFTER_POLL_ROUNDS\}_polls`/);
+  assert.match(source, /判定手机号不可用并更换号码/);
+});
