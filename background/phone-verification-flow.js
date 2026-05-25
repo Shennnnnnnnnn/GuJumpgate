@@ -5907,6 +5907,13 @@
               );
             }
 
+            if (purpose === 'signup') {
+              await clearPhoneRuntimeCountdown();
+              throw buildPhoneCodeTimeoutError(
+                `${normalizedActivation.phoneNumber} 在 ${waitSeconds} 秒内未收到短信，判定手机号不可用。`
+              );
+            }
+
             if (windowIndex < timeoutWindows) {
               await addLog(
                 `步骤 ${visibleStep}：${normalizedActivation.phoneNumber} 在 ${waitSeconds} 秒内未收到短信，准备请求重发。`,

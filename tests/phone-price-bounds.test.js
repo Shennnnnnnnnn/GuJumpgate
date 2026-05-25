@@ -25,3 +25,10 @@ test('phone code polling marks a number unusable after 12 unsuccessful polls', (
   assert.match(source, /reason:\s*`sms_timeout_after_\$\{PHONE_CODE_UNAVAILABLE_AFTER_POLL_ROUNDS\}_polls`/);
   assert.match(source, /判定手机号不可用并更换号码/);
 });
+
+test('signup phone code timeout marks current number unusable without resend window', () => {
+  assert.match(
+    source,
+    /if \(purpose === 'signup'\) \{\s*await clearPhoneRuntimeCountdown\(\);\s*throw buildPhoneCodeTimeoutError\(\s*`\$\{normalizedActivation\.phoneNumber\} 在 \$\{waitSeconds\} 秒内未收到短信，判定手机号不可用。`\s*\);\s*\}\s*if \(windowIndex < timeoutWindows\) \{\s*await addLog\(\s*`步骤 \$\{visibleStep\}：\$\{normalizedActivation\.phoneNumber\} 在 \$\{waitSeconds\} 秒内未收到短信，准备请求重发。`/
+  );
+});
